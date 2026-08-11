@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>美國經濟儀表板 · US Macro Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0E1116;
+    --panel:#171B23;
+    --panel-border:#282D38;
+    --paper:#F2EEE3;
+    --brass:#C9A66B;
+    --brass-dim:#8f7a52;
+    --up:#7FA98A;
+    --down:#C1665C;
+    --text:#E7E4DA;
+    --text-dim:#8A8F9C;
+    --radius:2px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  a{color:var(--brass);}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px 64px;}
+
+  /* Masthead */
+  header.masthead{
+    border-bottom:1px solid var(--panel-border);
+    padding:28px 20px 18px;
+  }
+  .masthead-inner{
+    max-width:1080px;margin:0 auto;
+    display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;
+  }
+  .masthead-title{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:clamp(28px,4vw,40px);
+    letter-spacing:-0.01em;
+    color:var(--paper);
+    margin:0;
+  }
+  .masthead-sub{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:0.14em;
+    color:var(--brass);
+    text-transform:uppercase;
+    margin-top:6px;
+  }
+  .masthead-meta{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    color:var(--text-dim);
+    text-align:right;
+  }
+  .gear-btn{
+    background:none;border:1px solid var(--panel-border);color:var(--text-dim);
+    border-radius:var(--radius);width:32px;height:32px;cursor:pointer;
+    margin-left:10px;font-size:15px;line-height:1;
+    display:inline-flex;align-items:center;justify-content:center;
+    transition:border-color .15s,color .15s;
+  }
+  .gear-btn:hover{border-color:var(--brass);color:var(--brass);}
+
+  /* Ticker */
+  .ticker-outer{
+    background:#12151C;
+    border-bottom:1px solid var(--panel-border);
+    overflow:hidden;
+    white-space:nowrap;
+  }
+  .ticker-track{
+    display:inline-flex;
+    animation:scroll 38s linear infinite;
+    padding:9px 0;
+  }
+  @keyframes scroll{
+    from{transform:translateX(0);}
+    to{transform:translateX(-50%);}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .ticker-track{animation:none;}
+  }
+  .ticker-item{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    color:var(--text-dim);
+    padding:0 22px;
+    border-right:1px solid var(--panel-border);
+    letter-spacing:.02em;
+  }
+  .ticker-item b{color:var(--paper);font-weight:500;}
+  .ticker-item .chg{margin-left:8px;}
+  .chg.up{color:var(--up);}
+  .chg.down{color:var(--down);}
+
+  /* Banner */
+  .banner{
+    margin:20px 0 0;
+    padding:10px 14px;
+    border:1px solid var(--brass-dim);
+    background:rgba(201,166,107,0.08);
+    color:var(--brass);
+    font-size:13px;
+    border-radius:var(--radius);
+    display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+  }
+  .banner button{
+    background:var(--brass);color:var(--ink);border:none;padding:6px 12px;
+    font-family:'Inter',sans-serif;font-weight:600;font-size:12px;cursor:pointer;border-radius:var(--radius);
+  }
+
+  /* Section */
+  section.category{margin-top:40px;}
+  .cat-head{
+    display:flex;align-items:baseline;gap:10px;
+    border-bottom:1px solid var(--panel-border);
+    padding-bottom:8px;margin-bottom:16px;
+  }
+  .cat-eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--brass);
+  }
+  .cat-title{
+    font-family:'Fraunces',serif;font-size:20px;font-weight:500;color:var(--paper);margin:0;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
+    gap:14px;
+  }
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--panel-border);
+    border-top:2px solid var(--brass-dim);
+    border-radius:var(--radius);
+    padding:16px 16px 14px;
+    display:flex;flex-direction:column;gap:8px;
+    min-height:150px;
+  }
+  .card-label{
+    font-size:12.5px;color:var(--text-dim);
+    display:flex;justify-content:space-between;gap:6px;
+  }
+  .card-label .freq{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);
+    border:1px solid var(--panel-border);padding:1px 5px;border-radius:2px;white-space:nowrap;
+  }
+  .card-value-row{display:flex;align-items:baseline;gap:8px;}
+  .card-value{
+    font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:26px;color:var(--paper);
+  }
+  .card-unit{font-size:12px;color:var(--text-dim);}
+  .card-delta{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;
+  }
+  .spark{width:100%;height:34px;margin-top:2px;}
+  .spark path{fill:none;stroke-width:1.6;}
+  .card-foot{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim);
+    display:flex;justify-content:space-between;margin-top:auto;padding-top:6px;
+    border-top:1px dashed var(--panel-border);
+  }
+  .card.is-loading .card-value{color:var(--text-dim);}
+  .card.is-error{border-top-color:var(--down);}
+  .card.is-error .card-value{color:var(--down);font-size:13px;font-weight:400;font-family:'Inter',sans-serif;}
+
+  /* Modal */
+  .modal-bg{
+    position:fixed;inset:0;background:rgba(5,7,10,0.7);
+    display:none;align-items:center;justify-content:center;z-index:50;padding:20px;
+  }
+  .modal-bg.open{display:flex;}
+  .modal{
+    background:var(--panel);border:1px solid var(--panel-border);border-top:3px solid var(--brass);
+    max-width:440px;width:100%;padding:24px;border-radius:var(--radius);
+  }
+  .modal h2{font-family:'Fraunces',serif;font-size:20px;margin:0 0 4px;color:var(--paper);font-weight:500;}
+  .modal p{font-size:13px;color:var(--text-dim);line-height:1.6;margin:6px 0 16px;}
+  .modal label{font-size:12px;color:var(--text-dim);display:block;margin-bottom:6px;font-family:'IBM Plex Mono',monospace;}
+  .modal input[type=text]{
+    width:100%;background:var(--ink);border:1px solid var(--panel-border);color:var(--text);
+    padding:10px 12px;border-radius:var(--radius);font-family:'IBM Plex Mono',monospace;font-size:13px;
+    margin-bottom:16px;
+  }
+  .modal input[type=text]:focus{outline:none;border-color:var(--brass);}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;}
+  .btn{
+    font-family:'Inter',sans-serif;font-weight:600;font-size:13px;cursor:pointer;
+    border-radius:var(--radius);padding:9px 16px;border:1px solid var(--panel-border);
+    background:transparent;color:var(--text);
+  }
+  .btn.primary{background:var(--brass);border-color:var(--brass);color:var(--ink);}
+  .checkline{display:flex;align-items:center;gap:8px;margin-bottom:16px;}
+  .checkline input{accent-color:var(--brass);}
+  .checkline label{margin:0;font-family:'Inter',sans-serif;font-size:13px;color:var(--text);}
+
+  footer.page-foot{
+    margin-top:56px;padding-top:16px;border-top:1px solid var(--panel-border);
+    font-size:11.5px;color:var(--text-dim);text-align:center;
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div>
+      <h1 class="masthead-title">美國經濟儀表板</h1>
+      <div class="masthead-sub">US MACRO DASHBOARD · LIVE FEED</div>
+    </div>
+    <div style="display:flex;align-items:center;">
+      <div class="masthead-meta">
+        <div id="updatedAt">尚未更新</div>
+        <div id="modeLabel">示範資料</div>
+      </div>
+      <button class="gear-btn" id="refreshBtn" title="重新整理">⟳</button>
+      <button class="gear-btn" id="settingsBtn" title="設定">⚙</button>
+    </div>
+  </div>
+</header>
+
+<div class="ticker-outer">
+  <div class="ticker-track" id="tickerTrack"></div>
+</div>
+
+<div class="wrap">
+
+  <div class="banner" id="demoBanner" style="display:none;">
+    <span>目前顯示<strong>示範資料</strong>。設定你的 Proxy 網址以串接 FRED 即時數據。</span>
+    <button id="bannerSettingsBtn">前往設定</button>
+  </div>
+
+  <div id="sections"></div>
+
+  <footer class="page-foot">
+    資料來源：Federal Reserve Economic Data (FRED), St. Louis Fed · 黃金現貨價格來源：Gold-API<br>
+    本頁僅供個人參考，非投資建議。
+  </footer>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h2>資料設定</h2>
+    <p>
+      FRED 官方 API 不開放瀏覽器直接呼叫（無 CORS），需透過你自己部署的代理伺服器轉發請求。
+      請貼上你部署好的 Proxy 網址（例如 Cloudflare Worker 網址），儲存後即可載入即時數據。
+      部署教學請見 README.md。
+    </p>
+    <label for="proxyInput">Proxy 網址</label>
+    <input type="text" id="proxyInput" placeholder="https://your-worker.your-name.workers.dev">
+    <div class="checkline">
+      <input type="checkbox" id="demoToggle">
+      <label for="demoToggle">強制使用示範資料（尚未部署 Proxy 時可勾選）</label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="closeModalBtn">取消</button>
+      <button class="btn primary" id="saveModalBtn">儲存並重新整理</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------------- 設定與資料模型 ---------------- */
+
+const CATEGORIES = [
+  {key:'rates', label:'利率與央行政策'},
+  {key:'inflation', label:'通膨'},
+  {key:'jobs', label:'就業與薪資'},
+  {key:'retail', label:'零售銷售'},
+  {key:'commodities', label:'大宗商品'},
+];
+
+// kind: level(直接顯示最新值) / yoy(年增率,需13期月資料) / diff(與前一期差值)
+const METRICS = [
+  {id:'fedfunds', series:'FEDFUNDS', category:'rates', label:'聯邦資金利率(有效)', unit:'%', kind:'level', decimals:2, freq:'月', limit:6},
+  {id:'dgs10',    series:'DGS10',    category:'rates', label:'10 年期公債殖利率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30},
+
+  {id:'cpi', series:'CPIAUCSL', category:'inflation', label:'CPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26},
+  {id:'ppi', series:'PPIACO',   category:'inflation', label:'PPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26},
+
+  {id:'unrate', series:'UNRATE',           category:'jobs', label:'失業率', unit:'%', kind:'level', decimals:1, freq:'月', limit:24},
+  {id:'payems', series:'PAYEMS',           category:'jobs', label:'非農就業人數(月增)', unit:'千人', kind:'diff', decimals:0, freq:'月', limit:24},
+  {id:'icsa',   series:'ICSA',             category:'jobs', label:'初次申請失業救濟金人數', unit:'人', kind:'level', decimals:0, freq:'週', limit:26},
+  {id:'wage',   series:'CES0500000003',    category:'jobs', label:'平均時薪年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26},
+
+  {id:'retail', series:'RSAFS', category:'retail', label:'零售銷售年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26},
+
+  {id:'oil',  series:'DCOILWTICO', category:'commodities', label:'WTI 原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30},
+  {id:'gold', category:'commodities', label:'黃金現貨價格', unit:'美元/盎司', kind:'goldapi', decimals:2, freq:'即時'},
+];
+
+// 示範資料（尚未接上 Proxy 時顯示，數字為近似示意值，非即時)
+const DEMO = {
+  fedfunds:{value:4.33, prevValue:4.33, series:[4.33,4.33,4.58,4.83,5.08,5.33]},
+  dgs10:{value:4.28, prevValue:4.31, series:[4.31,4.29,4.24,4.18,4.22,4.28]},
+  cpi:{value:2.7, prevValue:2.9},
+  ppi:{value:2.3, prevValue:2.4},
+  unrate:{value:4.2, prevValue:4.1, series:[4.0,4.0,4.1,4.1,4.2,4.2]},
+  payems:{value:73, prevValue:110},
+  icsa:{value:224000, prevValue:218000, series:[215000,220000,218000,222000,219000,224000]},
+  wage:{value:3.9, prevValue:4.0},
+  retail:{value:3.1, prevValue:2.8},
+  oil:{value:64.2, prevValue:63.1, series:[62.4,63.0,61.8,63.5,63.1,64.2]},
+  gold:{value:2410.5, prevValue:2395.0},
+};
+
+const state = {
+  proxyUrl: localStorage.getItem('econdash_proxy') || '',
+  forceDemo: localStorage.getItem('econdash_demo') === '1',
+  data: {},
+};
+
+/* ---------------- 工具函式 ---------------- */
+
+function fmtNum(v, decimals){
+  if(v===null||v===undefined||Number.isNaN(v)) return '—';
+  return v.toLocaleString('en-US',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
+}
+
+function deltaChip(curr, prev, decimals, suffix){
+  if(curr===null||prev===null||curr===undefined||prev===undefined) return {text:'—',cls:''};
+  const d = curr - prev;
+  const cls = d>0?'up':(d<0?'down':'');
+  const sign = d>0?'▲':(d<0?'▼':'—');
+  return {text:`${sign} ${fmtNum(Math.abs(d),decimals)}${suffix||''}`, cls};
+}
+
+function sparklinePath(values){
+  if(!values || values.length<2) return '';
+  const w=220,h=34,pad=2;
+  const min=Math.min(...values), max=Math.max(...values);
+  const range = (max-min)||1;
+  const step = (w-pad*2)/(values.length-1);
+  return values.map((v,i)=>{
+    const x = pad + i*step;
+    const y = pad + (1-(v-min)/range)*(h-pad*2);
+    return (i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1);
+  }).join(' ');
+}
+
+/* ---------------- 資料取得 ---------------- */
+
+async function fetchFred(seriesId, limit){
+  const url = `${state.proxyUrl.replace(/\/$/,'')}/fred?series_id=${seriesId}&limit=${limit}&sort_order=desc&file_type=json`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('FRED proxy error '+res.status);
+  const json = await res.json();
+  const obs = (json.observations||[])
+    .filter(o=>o.value!=='.')
+    .map(o=>({date:o.date, value:parseFloat(o.value)}))
+    .reverse(); // 轉為由舊到新
+  return obs;
+}
+
+async function fetchGold(){
+  const res = await fetch('https://api.gold-api.com/price/XAU');
+  if(!res.ok) throw new Error('gold api error');
+  const json = await res.json();
+  const price = json.price ?? json.rate ?? json.value;
+  return {value: price, prevValue: null, series: null};
+}
+
+async function loadMetric(m){
+  if(state.forceDemo || !state.proxyUrl){
+    return {ok:true, demo:true, ...DEMO[m.id]};
+  }
+  try{
+    if(m.kind==='goldapi'){
+      const g = await fetchGold();
+      return {ok:true, demo:false, value:g.value, prevValue:null, series:null};
+    }
+    const obs = await fetchFred(m.series, m.limit);
+    if(obs.length===0) throw new Error('no data');
+    const values = obs.map(o=>o.value);
+
+    if(m.kind==='level'){
+      const value = values[values.length-1];
+      const prevValue = values.length>1 ? values[values.length-2] : null;
+      return {ok:true, demo:false, value, prevValue, series:values.slice(-24)};
+    }
+    if(m.kind==='diff'){
+      const value = values.length>1 ? values[values.length-1]-values[values.length-2] : null;
+      const prevValue = values.length>2 ? values[values.length-2]-values[values.length-3] : null;
+      return {ok:true, demo:false, value, prevValue, series:values.slice(-24)};
+    }
+    if(m.kind==='yoy'){
+      if(values.length<13) throw new Error('insufficient history');
+      const latest = values[values.length-1];
+      const yearAgo = values[values.length-13];
+      const value = ((latest-yearAgo)/yearAgo)*100;
+      let prevValue = null;
+      if(values.length>=14){
+        const prevLatest = values[values.length-2];
+        const prevYearAgo = values[values.length-14];
+        prevValue = ((prevLatest-prevYearAgo)/prevYearAgo)*100;
+      }
+      return {ok:true, demo:false, value, prevValue, series:null};
+    }
+  }catch(e){
+    return {ok:false, demo:false, error:e.message};
+  }
+}
+
+/* ---------------- 渲染 ---------------- */
+
+function cardHTML(m){
+  return `
+    <div class="card" id="card-${m.id}">
+      <div class="card-label"><span>${m.label}</span><span class="freq">${m.freq}</span></div>
+      <div class="card-value-row">
+        <span class="card-value" id="val-${m.id}">···</span>
+        <span class="card-unit">${m.unit}</span>
+      </div>
+      <span class="card-delta" id="delta-${m.id}"></span>
+      <svg class="spark" id="spark-${m.id}" viewBox="0 0 220 34" preserveAspectRatio="none"></svg>
+      <div class="card-foot"><span>FRED · ${m.series||'Gold-API'}</span><span id="foot-${m.id}"></span></div>
+    </div>
+  `;
+}
+
+function renderSkeleton(){
+  const container = document.getElementById('sections');
+  container.innerHTML = CATEGORIES.map(cat=>{
+    const items = METRICS.filter(m=>m.category===cat.key);
+    if(items.length===0) return '';
+    return `
+      <section class="category">
+        <div class="cat-head">
+          <span class="cat-eyebrow">${cat.key}</span>
+          <h2 class="cat-title">${cat.label}</h2>
+        </div>
+        <div class="grid">${items.map(cardHTML).join('')}</div>
+      </section>
+    `;
+  }).join('');
+}
+
+function renderCard(m, result){
+  const cardEl = document.getElementById(`card-${m.id}`);
+  const valEl = document.getElementById(`val-${m.id}`);
+  const deltaEl = document.getElementById(`delta-${m.id}`);
+  const sparkEl = document.getElementById(`spark-${m.id}`);
+  const footEl = document.getElementById(`foot-${m.id}`);
+  cardEl.classList.remove('is-loading');
+
+  if(!result || !result.ok){
+    cardEl.classList.add('is-error');
+    valEl.textContent = '資料暫不可用';
+    deltaEl.textContent = '';
+    footEl.textContent = result && result.error ? result.error : '請確認 Proxy 設定';
+    return;
+  }
+
+  valEl.textContent = fmtNum(result.value, m.decimals);
+  const chip = deltaChip(result.value, result.prevValue, m.decimals, m.unit==='%'?' pp':'');
+  deltaEl.textContent = chip.text;
+  deltaEl.className = 'card-delta '+chip.cls;
+  footEl.textContent = result.demo ? 'DEMO' : '已更新';
+
+  if(result.series && result.series.length>1){
+    const path = sparklinePath(result.series);
+    const rising = result.series[result.series.length-1] >= result.series[0];
+    sparkEl.innerHTML = `<path d="${path}" style="stroke:${rising?'var(--up)':'var(--down)'}"/>`;
+  }else{
+    sparkEl.innerHTML = '';
+  }
+}
+
+function renderTicker(results){
+  const track = document.getElementById('tickerTrack');
+  const items = METRICS.map(m=>{
+    const r = results[m.id];
+    if(!r || !r.ok) return `<span class="ticker-item">${m.label} <b>—</b></span>`;
+    const chip = deltaChip(r.value, r.prevValue, m.decimals, '');
+    return `<span class="ticker-item">${m.label} <b>${fmtNum(r.value,m.decimals)}${m.unit}</b><span class="chg ${chip.cls}">${chip.text}</span></span>`;
+  }).join('');
+  track.innerHTML = items + items; // 重複一次以利無縫捲動
+}
+
+/* ---------------- 主流程 ---------------- */
+
+async function loadAll(){
+  renderSkeleton();
+  document.querySelectorAll('.card').forEach(c=>c.classList.add('is-loading'));
+
+  const usingDemo = state.forceDemo || !state.proxyUrl;
+  document.getElementById('demoBanner').style.display = usingDemo ? 'flex' : 'none';
+  document.getElementById('modeLabel').textContent = usingDemo ? '示範資料' : '即時資料 (FRED)';
+
+  const results = {};
+  await Promise.all(METRICS.map(async m=>{
+    const r = await loadMetric(m);
+    results[m.id] = r;
+    renderCard(m, r);
+  }));
+
+  renderTicker(results);
+  document.getElementById('updatedAt').textContent = '更新於 ' + new Date().toLocaleString('zh-TW');
+}
+
+/* ---------------- 設定面板 ---------------- */
+
+const modalBg = document.getElementById('modalBg');
+function openModal(){
+  document.getElementById('proxyInput').value = state.proxyUrl;
+  document.getElementById('demoToggle').checked = state.forceDemo;
+  modalBg.classList.add('open');
+}
+function closeModal(){ modalBg.classList.remove('open'); }
+
+document.getElementById('settingsBtn').onclick = openModal;
+document.getElementById('bannerSettingsBtn').onclick = openModal;
+document.getElementById('closeModalBtn').onclick = closeModal;
+document.getElementById('refreshBtn').onclick = loadAll;
+modalBg.onclick = (e)=>{ if(e.target===modalBg) closeModal(); };
+
+document.getElementById('saveModalBtn').onclick = ()=>{
+  state.proxyUrl = document.getElementById('proxyInput').value.trim();
+  state.forceDemo = document.getElementById('demoToggle').checked;
+  localStorage.setItem('econdash_proxy', state.proxyUrl);
+  localStorage.setItem('econdash_demo', state.forceDemo ? '1':'0');
+  closeModal();
+  loadAll();
+};
+
+loadAll();
+</script>
+</body>
+</html>
