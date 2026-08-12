@@ -237,6 +237,27 @@
   .detail-empty{
     padding:40px 10px;text-align:center;color:var(--text-dim);font-size:13px;
   }
+
+  .range-selector{display:flex;gap:6px;margin:2px 0 12px;}
+  .range-selector button{
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;padding:5px 13px;
+    border:1px solid var(--panel-border);background:transparent;color:var(--text-dim);
+    cursor:pointer;border-radius:2px;transition:border-color .15s,color .15s,background .15s;
+  }
+  .range-selector button:hover{border-color:var(--brass);color:var(--brass);}
+  .range-selector button.active{background:var(--brass);border-color:var(--brass);color:var(--ink);}
+
+  .chart-container{position:relative;}
+  .detail-chart{cursor:crosshair;}
+  .hover-line{stroke:var(--brass-dim);stroke-width:1;stroke-dasharray:3,3;}
+  .hover-dot{fill:var(--brass);stroke:var(--ink);stroke-width:1.5;}
+  .chart-tooltip{
+    position:absolute;display:none;pointer-events:none;z-index:5;
+    background:var(--ink);border:1px solid var(--brass);border-radius:2px;
+    padding:6px 10px;white-space:nowrap;
+  }
+  .chart-tooltip .tt-date{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);margin-bottom:2px;}
+  .chart-tooltip .tt-value{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--paper);font-weight:600;}
   .checkline{display:flex;align-items:center;gap:8px;margin-bottom:16px;}
   .checkline input{accent-color:var(--brass);}
   .checkline label{margin:0;font-family:'Inter',sans-serif;font-size:13px;color:var(--text);}
@@ -316,7 +337,15 @@
       <button class="gear-btn" id="closeDetailBtn" title="關閉">✕</button>
     </div>
     <div class="detail-stats" id="detailStats"></div>
-    <svg class="detail-chart" id="detailChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg>
+    <div class="range-selector" id="rangeSelector">
+      <button data-years="1">1 年</button>
+      <button data-years="5">5 年</button>
+      <button data-years="10">10 年</button>
+    </div>
+    <div class="chart-container">
+      <svg class="detail-chart" id="detailChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg>
+      <div class="chart-tooltip" id="chartTooltip"></div>
+    </div>
     <div class="detail-axis" id="detailAxis"></div>
     <div class="detail-foot" id="detailFoot"></div>
   </div>
@@ -333,23 +362,23 @@ const CATEGORIES = [
   {key:'commodities', label:'大宗商品'},
 ];
 
-// kind: level(直接顯示最新值) / yoy(年增率,需13期月資料) / diff(與前一期差值)
+// kind: level(直接顯示最新值) / yoy(年增率,需13期月資料) / diff(與前一期差值) / yahoo(近即時報價) / goldapi
 const METRICS = [
-  {id:'fedfunds', series:'FEDFUNDS', category:'rates', label:'聯邦資金利率(有效)', unit:'%', kind:'level', decimals:2, freq:'月', limit:6},
-  {id:'dgs10',    series:'DGS10',    category:'rates', label:'10 年期公債殖利率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30},
+  {id:'fedfunds', series:'FEDFUNDS', category:'rates', label:'聯邦資金利率(有效)', unit:'%', kind:'level', decimals:2, freq:'月', limit:6, source:'FRED'},
+  {id:'dgs10',    symbol:'^TNX',     category:'rates', label:'10 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
 
-  {id:'cpi', series:'CPIAUCSL', category:'inflation', label:'CPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26},
-  {id:'ppi', series:'PPIACO',   category:'inflation', label:'PPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26},
+  {id:'cpi', series:'CPIAUCSL', category:'inflation', label:'CPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'ppi', series:'PPIACO',   category:'inflation', label:'PPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
 
-  {id:'unrate', series:'UNRATE',           category:'jobs', label:'失業率', unit:'%', kind:'level', decimals:1, freq:'月', limit:24},
-  {id:'payems', series:'PAYEMS',           category:'jobs', label:'非農就業人數(月增)', unit:'千人', kind:'diff', decimals:0, freq:'月', limit:24},
-  {id:'icsa',   series:'ICSA',             category:'jobs', label:'初次申請失業救濟金人數', unit:'人', kind:'level', decimals:0, freq:'週', limit:26},
-  {id:'wage',   series:'CES0500000003',    category:'jobs', label:'平均時薪年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26},
+  {id:'unrate', series:'UNRATE',           category:'jobs', label:'失業率', unit:'%', kind:'level', decimals:1, freq:'月', limit:24, source:'FRED'},
+  {id:'payems', series:'PAYEMS',           category:'jobs', label:'非農就業人數(月增)', unit:'千人', kind:'diff', decimals:0, freq:'月', limit:24, source:'FRED'},
+  {id:'icsa',   series:'ICSA',             category:'jobs', label:'初次申請失業救濟金人數', unit:'人', kind:'level', decimals:0, freq:'週', limit:26, source:'FRED'},
+  {id:'wage',   series:'CES0500000003',    category:'jobs', label:'平均時薪年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
 
-  {id:'retail', series:'RSAFS', category:'retail', label:'零售銷售年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26},
+  {id:'retail', series:'RSAFS', category:'retail', label:'零售銷售年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
 
-  {id:'oil',  series:'DCOILWTICO', category:'commodities', label:'WTI 原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30},
-  {id:'gold', category:'commodities', label:'黃金現貨價格', unit:'美元/盎司', kind:'goldapi', decimals:2, freq:'即時'},
+  {id:'oil',  series:'DCOILWTICO', category:'commodities', label:'WTI 原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+  {id:'gold', category:'commodities', label:'黃金現貨價格', unit:'美元/盎司', kind:'goldapi', decimals:2, freq:'即時', source:'Gold-API'},
 ];
 
 // 示範資料（尚未接上 Proxy 時顯示，數字為近似示意值，非即時)
@@ -423,6 +452,24 @@ async function fetchGold(){
   return {value: price, prevValue: null, series: null};
 }
 
+async function fetchYahoo(symbol, range, interval){
+  const url = `${state.proxyUrl.replace(/\/$/,'')}/yahoo?symbol=${encodeURIComponent(symbol)}&range=${range}&interval=${interval}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Yahoo proxy error '+res.status);
+  const json = await res.json();
+  const result = json.chart && json.chart.result && json.chart.result[0];
+  if(!result) throw new Error('no data');
+  const timestamps = result.timestamp || [];
+  const closes = (result.indicators && result.indicators.quote && result.indicators.quote[0] && result.indicators.quote[0].close) || [];
+  const out = [];
+  for(let i=0;i<timestamps.length;i++){
+    const v = closes[i];
+    if(v===null || v===undefined) continue;
+    out.push({date:new Date(timestamps[i]*1000).toISOString().slice(0,10), value:v});
+  }
+  return out; // Yahoo 本身已依時間由舊到新排列
+}
+
 async function loadMetric(m){
   if(state.forceDemo || !state.proxyUrl){
     return {ok:true, demo:true, ...DEMO[m.id]};
@@ -431,6 +478,14 @@ async function loadMetric(m){
     if(m.kind==='goldapi'){
       const g = await fetchGold();
       return {ok:true, demo:false, value:g.value, prevValue:null, series:null};
+    }
+    if(m.kind==='yahoo'){
+      const series = await fetchYahoo(m.symbol, '6mo', '1d');
+      if(series.length===0) throw new Error('no data');
+      const values = series.map(o=>o.value);
+      const value = values[values.length-1];
+      const prevValue = values.length>1 ? values[values.length-2] : null;
+      return {ok:true, demo:false, value, prevValue, series:values.slice(-24)};
     }
     const obs = await fetchFred(m.series, m.limit);
     if(obs.length===0) throw new Error('no data');
@@ -476,7 +531,7 @@ function cardHTML(m){
       </div>
       <span class="card-delta" id="delta-${m.id}"></span>
       <svg class="spark" id="spark-${m.id}" viewBox="0 0 220 34" preserveAspectRatio="none"></svg>
-      <div class="card-foot"><span>FRED · ${m.series||'Gold-API'}</span><span id="foot-${m.id}"></span></div>
+      <div class="card-foot"><span>${m.source} · ${m.series||m.symbol||''}</span><span id="foot-${m.id}"></span></div>
     </div>
   `;
 }
@@ -548,7 +603,7 @@ async function loadAll(){
 
   const usingDemo = state.forceDemo || !state.proxyUrl;
   document.getElementById('demoBanner').style.display = usingDemo ? 'flex' : 'none';
-  document.getElementById('modeLabel').textContent = usingDemo ? '示範資料' : '即時資料 (FRED)';
+  document.getElementById('modeLabel').textContent = usingDemo ? '示範資料' : '即時資料';
 
   const results = {};
   await Promise.all(METRICS.map(async m=>{
@@ -586,7 +641,7 @@ document.getElementById('saveModalBtn').onclick = ()=>{
   loadAll();
 };
 
-/* ---------------- 過去10年歷史資料彈窗 ---------------- */
+/* ---------------- 過去歷史資料彈窗 ---------------- */
 
 // 依資料頻率估算需要抓幾筆原始觀測值,才能涵蓋10年
 // (年增率類指標需要多抓12期做基期比較)
@@ -598,34 +653,32 @@ function historyRawLimit(m){
   return 60;
 }
 
-function fmtDate(d){
-  // YYYY-MM-DD -> 依長度決定要顯示到年或到月
-  return d;
-}
-
-function buildChartSVG(points, decimals){
+function computeChartGeom(points){
   const w=760, h=280, padL=58, padR=10, padT=14, padB=10;
   const values = points.map(p=>p.value);
   const min = Math.min(...values), max = Math.max(...values);
   const range = (max-min) || 1;
   const innerW = w-padL-padR, innerH = h-padT-padB;
   const step = points.length>1 ? innerW/(points.length-1) : 0;
-  const gridY = v => padT + (1-(v-min)/range)*innerH;
+  return {w,h,padL,padR,padT,padB,min,max,range,innerW,innerH,step};
+}
 
+function buildChartSVG(points, decimals, geom){
+  const gridY = v => geom.padT + (1-(v-geom.min)/geom.range)*geom.innerH;
   const path = points.map((p,i)=>{
-    const x = padL + i*step;
+    const x = geom.padL + i*geom.step;
     const y = gridY(p.value);
     return (i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1);
   }).join(' ');
 
-  const mid = (min+max)/2;
-  const lines = [max, mid, min].map(v=>{
+  const mid = (geom.min+geom.max)/2;
+  const lines = [geom.max, mid, geom.min].map(v=>{
     const y = gridY(v).toFixed(1);
-    return `<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" class="gridline"/>
+    return `<line x1="${geom.padL}" y1="${y}" x2="${geom.w-geom.padR}" y2="${y}" class="gridline"/>
             <text x="4" y="${(parseFloat(y)+4).toFixed(1)}" class="axis-label">${fmtNum(v,decimals)}</text>`;
   }).join('');
 
-  return `${lines}<path d="${path}" class="chart-line"/>`;
+  return `${lines}<path d="${path}" class="chart-line"/><g id="hoverLayer"></g>`;
 }
 
 function renderDetailAxis(points){
@@ -638,6 +691,9 @@ function renderDetailAxis(points){
 }
 
 async function computeDetailSeries(m){
+  if(m.kind==='yahoo'){
+    return await fetchYahoo(m.symbol, '10y', '1d');
+  }
   const rawLimit = historyRawLimit(m);
   const obs = await fetchFred(m.series, rawLimit); // 由舊到新
 
@@ -663,22 +719,69 @@ async function computeDetailSeries(m){
   return [];
 }
 
+const detailState = { allPoints: [], meta: {}, rangeYears: 10 };
+let activeChartCtx = null;
+
+function renderDetailChart(points){
+  const meta = detailState.meta;
+  const svgEl = document.getElementById('detailChart');
+
+  if(points.length===0){
+    svgEl.innerHTML = '';
+    document.getElementById('detailAxis').innerHTML = '';
+    document.getElementById('detailStats').innerHTML = '';
+    activeChartCtx = null;
+    return;
+  }
+
+  const geom = computeChartGeom(points);
+  svgEl.innerHTML = buildChartSVG(points, meta.decimals, geom);
+  renderDetailAxis(points);
+
+  const latest = points[points.length-1].value;
+  document.getElementById('detailStats').innerHTML = `
+    <div><div class="detail-stat-label">最新</div><div class="detail-stat-value">${fmtNum(latest,meta.decimals)} ${meta.unit}</div></div>
+    <div><div class="detail-stat-label">區間最高</div><div class="detail-stat-value">${fmtNum(geom.max,meta.decimals)} ${meta.unit}</div></div>
+    <div><div class="detail-stat-label">區間最低</div><div class="detail-stat-value">${fmtNum(geom.min,meta.decimals)} ${meta.unit}</div></div>
+    <div><div class="detail-stat-label">資料筆數</div><div class="detail-stat-value">${points.length}</div></div>
+  `;
+  document.getElementById('detailFoot').textContent =
+    `資料範圍：${points[0].date} ～ ${points[points.length-1].date} · 來源：${meta.source}`;
+
+  activeChartCtx = {points, decimals:meta.decimals, unit:meta.unit, geom};
+}
+
+function applyRange(years){
+  detailState.rangeYears = years;
+  document.querySelectorAll('#rangeSelector button').forEach(b=>{
+    b.classList.toggle('active', Number(b.dataset.years)===years);
+  });
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear()-years);
+  const cutoffStr = cutoff.toISOString().slice(0,10);
+  const filtered = detailState.allPoints.filter(p=>p.date>=cutoffStr);
+  renderDetailChart(filtered.length>0 ? filtered : detailState.allPoints);
+}
+
 async function openDetail(id){
   const m = METRICS.find(x=>x.id===id);
   if(!m) return;
 
   const cat = CATEGORIES.find(c=>c.key===m.category);
   document.getElementById('detailCategory').textContent = cat ? cat.label : '';
-  document.getElementById('detailTitle').textContent = m.label + '（過去10年）';
+  document.getElementById('detailTitle').textContent = m.label;
   document.getElementById('detailStats').innerHTML = '';
   document.getElementById('detailChart').innerHTML = '';
   document.getElementById('detailAxis').innerHTML = '';
   document.getElementById('detailFoot').textContent = '載入中…';
+  document.getElementById('rangeSelector').style.display = m.kind==='goldapi' ? 'none' : 'flex';
   document.getElementById('detailModalBg').classList.add('open');
+  activeChartCtx = null;
+  document.getElementById('chartTooltip').style.display = 'none';
 
   if(m.kind==='goldapi'){
     document.getElementById('detailFoot').innerHTML =
-      '<div class="detail-empty">黃金目前僅提供即時報價，暫不支援過去10年歷史走勢。</div>';
+      '<div class="detail-empty">黃金目前僅提供即時報價，暫不支援過去歷史走勢。</div>';
     return;
   }
 
@@ -691,22 +794,13 @@ async function openDetail(id){
   try{
     const points = await computeDetailSeries(m);
     if(points.length===0) throw new Error('no data');
-
-    const values = points.map(p=>p.value);
-    const latest = values[values.length-1];
-    const max = Math.max(...values);
-    const min = Math.min(...values);
-
-    document.getElementById('detailStats').innerHTML = `
-      <div><div class="detail-stat-label">最新</div><div class="detail-stat-value">${fmtNum(latest,m.decimals)} ${m.unit}</div></div>
-      <div><div class="detail-stat-label">10年最高</div><div class="detail-stat-value">${fmtNum(max,m.decimals)} ${m.unit}</div></div>
-      <div><div class="detail-stat-label">10年最低</div><div class="detail-stat-value">${fmtNum(min,m.decimals)} ${m.unit}</div></div>
-      <div><div class="detail-stat-label">資料筆數</div><div class="detail-stat-value">${points.length}</div></div>
-    `;
-    document.getElementById('detailChart').innerHTML = buildChartSVG(points, m.decimals);
-    renderDetailAxis(points);
-    document.getElementById('detailFoot').textContent =
-      `資料範圍：${points[0].date} ～ ${points[points.length-1].date} · 來源：FRED (${m.series})`;
+    detailState.allPoints = points;
+    detailState.meta = {
+      decimals: m.decimals,
+      unit: m.unit,
+      source: `${m.source} (${m.series || m.symbol})`,
+    };
+    applyRange(detailState.rangeYears || 10);
   }catch(e){
     document.getElementById('detailFoot').innerHTML =
       `<div class="detail-empty">歷史資料載入失敗：${e.message}</div>`;
@@ -720,6 +814,57 @@ document.getElementById('detailModalBg').onclick = (e)=>{
 };
 document.addEventListener('keydown', (e)=>{
   if(e.key==='Escape'){ closeDetail(); closeModal(); }
+});
+
+document.getElementById('rangeSelector').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-years]');
+  if(!btn) return;
+  applyRange(Number(btn.dataset.years));
+});
+
+/* ---------------- 圖表 hover 顯示數值 ---------------- */
+
+const detailChartEl = document.getElementById('detailChart');
+const chartTooltipEl = document.getElementById('chartTooltip');
+
+function handleChartMove(clientX, clientY){
+  if(!activeChartCtx) return;
+  const {points, decimals, unit, geom} = activeChartCtx;
+  const rect = detailChartEl.getBoundingClientRect();
+  if(rect.width===0) return;
+  const scaleX = geom.w/rect.width;
+  const xSvg = (clientX-rect.left)*scaleX;
+  let idx = Math.round((xSvg-geom.padL)/(geom.step||1));
+  idx = Math.max(0, Math.min(points.length-1, idx));
+  const p = points[idx];
+  const x = geom.padL + idx*geom.step;
+  const y = geom.padT + (1-(p.value-geom.min)/geom.range)*geom.innerH;
+
+  const hoverLayer = document.getElementById('hoverLayer');
+  if(hoverLayer){
+    hoverLayer.innerHTML = `
+      <line x1="${x.toFixed(1)}" y1="${geom.padT}" x2="${x.toFixed(1)}" y2="${geom.h-geom.padB}" class="hover-line"/>
+      <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" class="hover-dot"/>
+    `;
+  }
+
+  const containerRect = detailChartEl.parentElement.getBoundingClientRect();
+  let left = clientX - containerRect.left + 14;
+  if(left > containerRect.width-130) left = clientX - containerRect.left - 130;
+  chartTooltipEl.style.display = 'block';
+  chartTooltipEl.style.left = left+'px';
+  chartTooltipEl.style.top = Math.max(0, clientY - containerRect.top - 38)+'px';
+  chartTooltipEl.innerHTML = `<div class="tt-date">${p.date}</div><div class="tt-value">${fmtNum(p.value,decimals)} ${unit}</div>`;
+}
+
+detailChartEl.addEventListener('mousemove', (e)=> handleChartMove(e.clientX, e.clientY));
+detailChartEl.addEventListener('mouseleave', ()=>{
+  chartTooltipEl.style.display = 'none';
+  const hoverLayer = document.getElementById('hoverLayer');
+  if(hoverLayer) hoverLayer.innerHTML = '';
+});
+detailChartEl.addEventListener('touchmove', (e)=>{
+  if(e.touches[0]){ handleChartMove(e.touches[0].clientX, e.touches[0].clientY); }
 });
 
 loadAll();
