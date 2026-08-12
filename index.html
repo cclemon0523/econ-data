@@ -149,7 +149,12 @@
     padding:16px 16px 14px;
     display:flex;flex-direction:column;gap:8px;
     min-height:150px;
+    cursor:pointer;
+    transition:border-color .15s,transform .15s;
   }
+  .card:hover{border-color:var(--brass);}
+  .card:hover .card-value{color:var(--brass);}
+  .card:focus-visible{outline:2px solid var(--brass);outline-offset:2px;}
   .card-label{
     font-size:12.5px;color:var(--text-dim);
     display:flex;justify-content:space-between;gap:6px;
@@ -203,6 +208,35 @@
     background:transparent;color:var(--text);
   }
   .btn.primary{background:var(--brass);border-color:var(--brass);color:var(--ink);}
+
+  /* Detail modal */
+  .modal-wide{max-width:780px;}
+  .detail-head{
+    display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;
+  }
+  .detail-head h2{margin:2px 0 0;}
+  .detail-stats{
+    display:flex;gap:22px;flex-wrap:wrap;
+    padding:12px 0;margin-bottom:6px;
+    border-top:1px solid var(--panel-border);border-bottom:1px solid var(--panel-border);
+  }
+  .detail-stat-label{font-size:10.5px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;}
+  .detail-stat-value{font-family:'IBM Plex Mono',monospace;font-size:17px;color:var(--paper);font-weight:600;margin-top:2px;}
+  .detail-chart{width:100%;height:auto;display:block;margin-top:6px;}
+  .chart-line{fill:none;stroke:var(--brass);stroke-width:1.8;}
+  .gridline{stroke:var(--panel-border);stroke-width:1;}
+  .axis-label{font-family:'IBM Plex Mono',monospace;font-size:10px;fill:var(--text-dim);}
+  .detail-axis{
+    display:flex;justify-content:space-between;margin-top:6px;
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim);
+  }
+  .detail-foot{
+    margin-top:16px;font-size:12px;color:var(--text-dim);
+    min-height:16px;
+  }
+  .detail-empty{
+    padding:40px 10px;text-align:center;color:var(--text-dim);font-size:13px;
+  }
   .checkline{display:flex;align-items:center;gap:8px;margin-bottom:16px;}
   .checkline input{accent-color:var(--brass);}
   .checkline label{margin:0;font-family:'Inter',sans-serif;font-size:13px;color:var(--text);}
@@ -269,6 +303,22 @@
       <button class="btn" id="closeModalBtn">取消</button>
       <button class="btn primary" id="saveModalBtn">儲存並重新整理</button>
     </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="detailModalBg">
+  <div class="modal modal-wide">
+    <div class="detail-head">
+      <div>
+        <span class="cat-eyebrow" id="detailCategory"></span>
+        <h2 id="detailTitle"></h2>
+      </div>
+      <button class="gear-btn" id="closeDetailBtn" title="關閉">✕</button>
+    </div>
+    <div class="detail-stats" id="detailStats"></div>
+    <svg class="detail-chart" id="detailChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg>
+    <div class="detail-axis" id="detailAxis"></div>
+    <div class="detail-foot" id="detailFoot"></div>
   </div>
 </div>
 
@@ -418,7 +468,7 @@ async function loadMetric(m){
 
 function cardHTML(m){
   return `
-    <div class="card" id="card-${m.id}">
+    <div class="card" id="card-${m.id}" tabindex="0" role="button" aria-label="查看 ${m.label} 過去10年資料" onclick="openDetail('${m.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDetail('${m.id}');}">
       <div class="card-label"><span>${m.label}</span><span class="freq">${m.freq}</span></div>
       <div class="card-value-row">
         <span class="card-value" id="val-${m.id}">···</span>
@@ -535,6 +585,142 @@ document.getElementById('saveModalBtn').onclick = ()=>{
   closeModal();
   loadAll();
 };
+
+/* ---------------- 過去10年歷史資料彈窗 ---------------- */
+
+// 依資料頻率估算需要抓幾筆原始觀測值,才能涵蓋10年
+// (年增率類指標需要多抓12期做基期比較)
+function historyRawLimit(m){
+  const years = 10;
+  if(m.freq==='日') return years*365 + 30;
+  if(m.freq==='週') return years*52 + 4;
+  if(m.freq==='月') return years*12 + (m.kind==='yoy' ? 12 : 0) + 2;
+  return 60;
+}
+
+function fmtDate(d){
+  // YYYY-MM-DD -> 依長度決定要顯示到年或到月
+  return d;
+}
+
+function buildChartSVG(points, decimals){
+  const w=760, h=280, padL=58, padR=10, padT=14, padB=10;
+  const values = points.map(p=>p.value);
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = (max-min) || 1;
+  const innerW = w-padL-padR, innerH = h-padT-padB;
+  const step = points.length>1 ? innerW/(points.length-1) : 0;
+  const gridY = v => padT + (1-(v-min)/range)*innerH;
+
+  const path = points.map((p,i)=>{
+    const x = padL + i*step;
+    const y = gridY(p.value);
+    return (i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1);
+  }).join(' ');
+
+  const mid = (min+max)/2;
+  const lines = [max, mid, min].map(v=>{
+    const y = gridY(v).toFixed(1);
+    return `<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" class="gridline"/>
+            <text x="4" y="${(parseFloat(y)+4).toFixed(1)}" class="axis-label">${fmtNum(v,decimals)}</text>`;
+  }).join('');
+
+  return `${lines}<path d="${path}" class="chart-line"/>`;
+}
+
+function renderDetailAxis(points){
+  const axisEl = document.getElementById('detailAxis');
+  if(points.length===0){ axisEl.innerHTML=''; return; }
+  const labelCount = Math.min(6, points.length);
+  const idxs = Array.from({length:labelCount}, (_,i)=> Math.round(i*(points.length-1)/(labelCount-1||1)));
+  const unique = [...new Set(idxs)];
+  axisEl.innerHTML = unique.map(i=>`<span>${points[i].date.slice(0,7)}</span>`).join('');
+}
+
+async function computeDetailSeries(m){
+  const rawLimit = historyRawLimit(m);
+  const obs = await fetchFred(m.series, rawLimit); // 由舊到新
+
+  if(m.kind==='level'){
+    return obs.map(o=>({date:o.date, value:o.value}));
+  }
+  if(m.kind==='diff'){
+    const out=[];
+    for(let i=1;i<obs.length;i++){
+      out.push({date:obs[i].date, value:obs[i].value-obs[i-1].value});
+    }
+    return out;
+  }
+  if(m.kind==='yoy'){
+    const out=[];
+    for(let i=12;i<obs.length;i++){
+      const base = obs[i-12].value;
+      if(base===0) continue;
+      out.push({date:obs[i].date, value:((obs[i].value-base)/base)*100});
+    }
+    return out;
+  }
+  return [];
+}
+
+async function openDetail(id){
+  const m = METRICS.find(x=>x.id===id);
+  if(!m) return;
+
+  const cat = CATEGORIES.find(c=>c.key===m.category);
+  document.getElementById('detailCategory').textContent = cat ? cat.label : '';
+  document.getElementById('detailTitle').textContent = m.label + '（過去10年）';
+  document.getElementById('detailStats').innerHTML = '';
+  document.getElementById('detailChart').innerHTML = '';
+  document.getElementById('detailAxis').innerHTML = '';
+  document.getElementById('detailFoot').textContent = '載入中…';
+  document.getElementById('detailModalBg').classList.add('open');
+
+  if(m.kind==='goldapi'){
+    document.getElementById('detailFoot').innerHTML =
+      '<div class="detail-empty">黃金目前僅提供即時報價，暫不支援過去10年歷史走勢。</div>';
+    return;
+  }
+
+  if(state.forceDemo || !state.proxyUrl){
+    document.getElementById('detailFoot').innerHTML =
+      '<div class="detail-empty">目前是示範模式，無法載入完整歷史資料。請先在設定中貼上你的 Proxy 網址。</div>';
+    return;
+  }
+
+  try{
+    const points = await computeDetailSeries(m);
+    if(points.length===0) throw new Error('no data');
+
+    const values = points.map(p=>p.value);
+    const latest = values[values.length-1];
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+
+    document.getElementById('detailStats').innerHTML = `
+      <div><div class="detail-stat-label">最新</div><div class="detail-stat-value">${fmtNum(latest,m.decimals)} ${m.unit}</div></div>
+      <div><div class="detail-stat-label">10年最高</div><div class="detail-stat-value">${fmtNum(max,m.decimals)} ${m.unit}</div></div>
+      <div><div class="detail-stat-label">10年最低</div><div class="detail-stat-value">${fmtNum(min,m.decimals)} ${m.unit}</div></div>
+      <div><div class="detail-stat-label">資料筆數</div><div class="detail-stat-value">${points.length}</div></div>
+    `;
+    document.getElementById('detailChart').innerHTML = buildChartSVG(points, m.decimals);
+    renderDetailAxis(points);
+    document.getElementById('detailFoot').textContent =
+      `資料範圍：${points[0].date} ～ ${points[points.length-1].date} · 來源：FRED (${m.series})`;
+  }catch(e){
+    document.getElementById('detailFoot').innerHTML =
+      `<div class="detail-empty">歷史資料載入失敗：${e.message}</div>`;
+  }
+}
+
+function closeDetail(){ document.getElementById('detailModalBg').classList.remove('open'); }
+document.getElementById('closeDetailBtn').onclick = closeDetail;
+document.getElementById('detailModalBg').onclick = (e)=>{
+  if(e.target.id==='detailModalBg') closeDetail();
+};
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='Escape'){ closeDetail(); closeModal(); }
+});
 
 loadAll();
 </script>
