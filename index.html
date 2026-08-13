@@ -452,6 +452,22 @@ function sparklinePath(values){
 
 function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
+// 用「日期」而非陣列位置來比對月份,避免資料中若有缺漏/多餘筆數時,
+// 位置推算(例如「往前推12筆」)算到錯的月份。
+function monthKey(dateStr){ return dateStr.slice(0,7); } // 'YYYY-MM'
+
+function addMonths(dateStr, delta){
+  const d = new Date(dateStr+'T00:00:00Z');
+  d.setUTCMonth(d.getUTCMonth()+delta);
+  return d.toISOString().slice(0,7);
+}
+
+function buildMonthMap(obs){
+  const map = new Map();
+  obs.forEach(o=> map.set(monthKey(o.date), o));
+  return map;
+}
+
 // 對暫時性錯誤(如伺服器短暫過載)自動重試,降低瞬間大量並發請求造成的偶發失敗
 async function fetchWithRetry(fn, retries=2, delayMs=500){
   for(let attempt=0; attempt<=retries; attempt++){
@@ -516,6 +532,8 @@ async function loadMetric(m){
     if(obs.length===0) throw new Error('no data');
     const values = obs.map(o=>o.value);
     const asOf = obs[obs.length-1].date;
+    const monthMap = buildMonthMap(obs);
+    const latestObs = obs[obs.length-1];
 
     if(m.kind==='level'){
       const value = values[values.length-1];
@@ -523,33 +541,35 @@ async function loadMetric(m){
       return {ok:true, demo:false, value, prevValue, series:values.slice(-24), asOf};
     }
     if(m.kind==='diff'){
-      const value = values.length>1 ? values[values.length-1]-values[values.length-2] : null;
-      const prevValue = values.length>2 ? values[values.length-2]-values[values.length-3] : null;
+      // 依日期找「前一個月」,而非假設陣列往前一格就是前一個月
+      const prevObs = monthMap.get(addMonths(latestObs.date, -1));
+      const prevPrevObs = prevObs ? monthMap.get(addMonths(prevObs.date, -1)) : null;
+      const value = prevObs ? latestObs.value - prevObs.value : null;
+      const prevValue = (prevObs && prevPrevObs) ? prevObs.value - prevPrevObs.value : null;
       return {ok:true, demo:false, value, prevValue, series:values.slice(-24), asOf};
     }
     if(m.kind==='mom'){
-      if(values.length<2) throw new Error('insufficient history');
-      const latest = values[values.length-1];
-      const prevBase = values[values.length-2];
-      const value = ((latest-prevBase)/prevBase)*100;
+      const prevObs = monthMap.get(addMonths(latestObs.date, -1));
+      if(!prevObs) throw new Error('insufficient history (missing prior month)');
+      const value = ((latestObs.value-prevObs.value)/prevObs.value)*100;
       let prevValue = null;
-      if(values.length>=3){
-        const prevLatest = values[values.length-2];
-        const prevPrevBase = values[values.length-3];
-        prevValue = ((prevLatest-prevPrevBase)/prevPrevBase)*100;
+      const prevPrevObs = monthMap.get(addMonths(prevObs.date, -1));
+      if(prevPrevObs){
+        prevValue = ((prevObs.value-prevPrevObs.value)/prevPrevObs.value)*100;
       }
       return {ok:true, demo:false, value, prevValue, series:null, asOf};
     }
     if(m.kind==='yoy'){
-      if(values.length<13) throw new Error('insufficient history');
-      const latest = values[values.length-1];
-      const yearAgo = values[values.length-13];
-      const value = ((latest-yearAgo)/yearAgo)*100;
+      const yearAgoObs = monthMap.get(addMonths(latestObs.date, -12));
+      if(!yearAgoObs) throw new Error('insufficient history (missing year-ago month)');
+      const value = ((latestObs.value-yearAgoObs.value)/yearAgoObs.value)*100;
       let prevValue = null;
-      if(values.length>=14){
-        const prevLatest = values[values.length-2];
-        const prevYearAgo = values[values.length-14];
-        prevValue = ((prevLatest-prevYearAgo)/prevYearAgo)*100;
+      const prevObs = monthMap.get(addMonths(latestObs.date, -1));
+      if(prevObs){
+        const prevYearAgoObs = monthMap.get(addMonths(prevObs.date, -12));
+        if(prevYearAgoObs){
+          prevValue = ((prevObs.value-prevYearAgoObs.value)/prevYearAgoObs.value)*100;
+        }
       }
       return {ok:true, demo:false, value, prevValue, series:null, asOf};
     }
@@ -758,28 +778,34 @@ async function computeDetailSeries(m){
     return obs.map(o=>({date:o.date, value:o.value}));
   }
   if(m.kind==='diff'){
+    const monthMap = buildMonthMap(obs);
     const out=[];
-    for(let i=1;i<obs.length;i++){
-      out.push({date:obs[i].date, value:obs[i].value-obs[i-1].value});
-    }
+    obs.forEach(o=>{
+      const prevObs = monthMap.get(addMonths(o.date, -1));
+      if(prevObs){ out.push({date:o.date, value:o.value-prevObs.value}); }
+    });
     return out;
   }
   if(m.kind==='mom'){
+    const monthMap = buildMonthMap(obs);
     const out=[];
-    for(let i=1;i<obs.length;i++){
-      const base = obs[i-1].value;
-      if(base===0) continue;
-      out.push({date:obs[i].date, value:((obs[i].value-base)/base)*100});
-    }
+    obs.forEach(o=>{
+      const prevObs = monthMap.get(addMonths(o.date, -1));
+      if(prevObs && prevObs.value!==0){
+        out.push({date:o.date, value:((o.value-prevObs.value)/prevObs.value)*100});
+      }
+    });
     return out;
   }
   if(m.kind==='yoy'){
+    const monthMap = buildMonthMap(obs);
     const out=[];
-    for(let i=12;i<obs.length;i++){
-      const base = obs[i-12].value;
-      if(base===0) continue;
-      out.push({date:obs[i].date, value:((obs[i].value-base)/base)*100});
-    }
+    obs.forEach(o=>{
+      const yearAgoObs = monthMap.get(addMonths(o.date, -12));
+      if(yearAgoObs && yearAgoObs.value!==0){
+        out.push({date:o.date, value:((o.value-yearAgoObs.value)/yearAgoObs.value)*100});
+      }
+    });
     return out;
   }
   return [];
