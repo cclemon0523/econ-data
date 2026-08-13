@@ -301,7 +301,7 @@
   <div id="sections"></div>
 
   <footer class="page-foot">
-    資料來源：Federal Reserve Economic Data (FRED), St. Louis Fed · 黃金現貨價格來源：Gold-API<br>
+    資料來源：Federal Reserve Economic Data (FRED), St. Louis Fed · 10年期公債殖利率與商品近即時走勢來源：Yahoo Finance<br>
     本頁僅供個人參考，非投資建議。
   </footer>
 </div>
@@ -337,11 +337,7 @@
       <button class="gear-btn" id="closeDetailBtn" title="關閉">✕</button>
     </div>
     <div class="detail-stats" id="detailStats"></div>
-    <div class="range-selector" id="rangeSelector">
-      <button data-years="1">1 年</button>
-      <button data-years="5">5 年</button>
-      <button data-years="10">10 年</button>
-    </div>
+    <div class="range-selector" id="rangeSelector"></div>
     <div class="chart-container">
       <svg class="detail-chart" id="detailChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg>
       <div class="chart-tooltip" id="chartTooltip"></div>
@@ -358,42 +354,61 @@ const CATEGORIES = [
   {key:'rates', label:'利率與央行政策'},
   {key:'inflation', label:'通膨'},
   {key:'jobs', label:'就業與薪資'},
-  {key:'retail', label:'零售銷售'},
+  {key:'retail', label:'消費'},
   {key:'commodities', label:'大宗商品'},
 ];
 
-// kind: level(直接顯示最新值) / yoy(年增率,需13期月資料) / diff(與前一期差值) / yahoo(近即時報價) / goldapi
+// kind: level(直接顯示最新值) / yoy(年增率) / mom(月增率) / diff(與前一期差值) / yahoo(近即時報價,支援分/日資料)
+// intradaySymbol: 若有設定,代表這個 FRED 指標額外支援用 Yahoo Finance 看 1天/5天 的近即時走勢
 const METRICS = [
   {id:'fedfunds', series:'FEDFUNDS', category:'rates', label:'聯邦資金利率(有效)', unit:'%', kind:'level', decimals:2, freq:'月', limit:6, source:'FRED'},
   {id:'dgs10',    symbol:'^TNX',     category:'rates', label:'10 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
 
-  {id:'cpi', series:'CPIAUCSL', category:'inflation', label:'CPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
-  {id:'ppi', series:'PPIACO',   category:'inflation', label:'PPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'cpi_yoy',   series:'CPIAUCSL', category:'inflation', label:'CPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'cpi_mom',   series:'CPIAUCSL', category:'inflation', label:'CPI 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'pcepi_yoy', series:'PCEPI',    category:'inflation', label:'PCE 物價指數 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'pcepi_mom', series:'PCEPI',    category:'inflation', label:'PCE 物價指數 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'ppi_yoy',   series:'PPIACO',   category:'inflation', label:'PPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'ppi_mom',   series:'PPIACO',   category:'inflation', label:'PPI 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
 
-  {id:'unrate', series:'UNRATE',           category:'jobs', label:'失業率', unit:'%', kind:'level', decimals:1, freq:'月', limit:24, source:'FRED'},
-  {id:'payems', series:'PAYEMS',           category:'jobs', label:'非農就業人數(月增)', unit:'千人', kind:'diff', decimals:0, freq:'月', limit:24, source:'FRED'},
-  {id:'icsa',   series:'ICSA',             category:'jobs', label:'初次申請失業救濟金人數', unit:'人', kind:'level', decimals:0, freq:'週', limit:26, source:'FRED'},
-  {id:'wage',   series:'CES0500000003',    category:'jobs', label:'平均時薪年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'unrate',    series:'UNRATE',        category:'jobs', label:'失業率', unit:'%', kind:'level', decimals:1, freq:'月', limit:24, source:'FRED'},
+  {id:'payems',    series:'PAYEMS',        category:'jobs', label:'非農就業人數(月增)', unit:'千人', kind:'diff', decimals:0, freq:'月', limit:24, source:'FRED'},
+  {id:'icsa',      series:'ICSA',          category:'jobs', label:'初次申請失業救濟金人數', unit:'人', kind:'level', decimals:0, freq:'週', limit:26, source:'FRED'},
+  {id:'ccsa',      series:'CCSA',          category:'jobs', label:'續領失業救濟金人數', unit:'人', kind:'level', decimals:0, freq:'週', limit:26, source:'FRED'},
+  {id:'wage',      series:'CES0500000003', category:'jobs', label:'平均時薪年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'dspic_yoy', series:'DSPIC96',       category:'jobs', label:'實質可支配所得年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
 
-  {id:'retail', series:'RSAFS', category:'retail', label:'零售銷售年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'retail_yoy', series:'RSAFS', category:'retail', label:'零售銷售年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'retail_mom', series:'RSAFS', category:'retail', label:'零售銷售月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'pce_yoy',    series:'PCE',   category:'retail', label:'PCE(個人消費支出) 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'pce_mom',    series:'PCE',   category:'retail', label:'PCE(個人消費支出) 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
 
-  {id:'oil',  series:'DCOILWTICO', category:'commodities', label:'WTI 原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
-  {id:'gold', category:'commodities', label:'黃金現貨價格', unit:'美元/盎司', kind:'goldapi', decimals:2, freq:'即時', source:'Gold-API'},
+  {id:'oil',   series:'DCOILWTICO',   category:'commodities', label:'WTI 原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED', intradaySymbol:'CL=F'},
+  {id:'brent', series:'DCOILBRENTEU', category:'commodities', label:'布蘭特原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED', intradaySymbol:'BZ=F'},
 ];
 
 // 示範資料（尚未接上 Proxy 時顯示，數字為近似示意值，非即時)
 const DEMO = {
   fedfunds:{value:4.33, prevValue:4.33, series:[4.33,4.33,4.58,4.83,5.08,5.33]},
   dgs10:{value:4.28, prevValue:4.31, series:[4.31,4.29,4.24,4.18,4.22,4.28]},
-  cpi:{value:2.7, prevValue:2.9},
-  ppi:{value:2.3, prevValue:2.4},
+  cpi_yoy:{value:2.7, prevValue:2.9},
+  cpi_mom:{value:0.2, prevValue:0.3},
+  pcepi_yoy:{value:2.5, prevValue:2.6},
+  pcepi_mom:{value:0.2, prevValue:0.2},
+  ppi_yoy:{value:2.3, prevValue:2.4},
+  ppi_mom:{value:0.1, prevValue:0.3},
   unrate:{value:4.2, prevValue:4.1, series:[4.0,4.0,4.1,4.1,4.2,4.2]},
   payems:{value:73, prevValue:110},
   icsa:{value:224000, prevValue:218000, series:[215000,220000,218000,222000,219000,224000]},
+  ccsa:{value:1870000, prevValue:1855000, series:[1830000,1842000,1850000,1861000,1855000,1870000]},
   wage:{value:3.9, prevValue:4.0},
-  retail:{value:3.1, prevValue:2.8},
+  dspic_yoy:{value:1.6, prevValue:1.8},
+  retail_yoy:{value:3.1, prevValue:2.8},
+  retail_mom:{value:0.4, prevValue:0.1},
+  pce_yoy:{value:5.2, prevValue:5.0},
+  pce_mom:{value:0.4, prevValue:0.3},
   oil:{value:64.2, prevValue:63.1, series:[62.4,63.0,61.8,63.5,63.1,64.2]},
-  gold:{value:2410.5, prevValue:2395.0},
+  brent:{value:67.8, prevValue:66.9, series:[65.9,66.6,65.2,67.0,66.9,67.8]},
 };
 
 const state = {
@@ -444,14 +459,6 @@ async function fetchFred(seriesId, limit){
   return obs;
 }
 
-async function fetchGold(){
-  const res = await fetch('https://api.gold-api.com/price/XAU');
-  if(!res.ok) throw new Error('gold api error');
-  const json = await res.json();
-  const price = json.price ?? json.rate ?? json.value;
-  return {value: price, prevValue: null, series: null};
-}
-
 async function fetchYahoo(symbol, range, interval){
   const url = `${state.proxyUrl.replace(/\/$/,'')}/yahoo?symbol=${encodeURIComponent(symbol)}&range=${range}&interval=${interval}`;
   const res = await fetch(url);
@@ -465,9 +472,9 @@ async function fetchYahoo(symbol, range, interval){
   for(let i=0;i<timestamps.length;i++){
     const v = closes[i];
     if(v===null || v===undefined) continue;
-    out.push({date:new Date(timestamps[i]*1000).toISOString().slice(0,10), value:v});
+    out.push({date:new Date(timestamps[i]*1000).toISOString(), value:v});
   }
-  return out; // Yahoo 本身已依時間由舊到新排列
+  return out; // Yahoo 本身已依時間由舊到新排列;date為完整ISO時間戳
 }
 
 async function loadMetric(m){
@@ -475,10 +482,6 @@ async function loadMetric(m){
     return {ok:true, demo:true, ...DEMO[m.id]};
   }
   try{
-    if(m.kind==='goldapi'){
-      const g = await fetchGold();
-      return {ok:true, demo:false, value:g.value, prevValue:null, series:null};
-    }
     if(m.kind==='yahoo'){
       const series = await fetchYahoo(m.symbol, '6mo', '1d');
       if(series.length===0) throw new Error('no data');
@@ -500,6 +503,19 @@ async function loadMetric(m){
       const value = values.length>1 ? values[values.length-1]-values[values.length-2] : null;
       const prevValue = values.length>2 ? values[values.length-2]-values[values.length-3] : null;
       return {ok:true, demo:false, value, prevValue, series:values.slice(-24)};
+    }
+    if(m.kind==='mom'){
+      if(values.length<2) throw new Error('insufficient history');
+      const latest = values[values.length-1];
+      const prevBase = values[values.length-2];
+      const value = ((latest-prevBase)/prevBase)*100;
+      let prevValue = null;
+      if(values.length>=3){
+        const prevLatest = values[values.length-2];
+        const prevPrevBase = values[values.length-3];
+        prevValue = ((prevLatest-prevPrevBase)/prevPrevBase)*100;
+      }
+      return {ok:true, demo:false, value, prevValue, series:null};
     }
     if(m.kind==='yoy'){
       if(values.length<13) throw new Error('insufficient history');
@@ -523,7 +539,7 @@ async function loadMetric(m){
 
 function cardHTML(m){
   return `
-    <div class="card" id="card-${m.id}" tabindex="0" role="button" aria-label="查看 ${m.label} 過去10年資料" onclick="openDetail('${m.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDetail('${m.id}');}">
+    <div class="card" id="card-${m.id}" tabindex="0" role="button" aria-label="查看 ${m.label} 歷史走勢" onclick="openDetail('${m.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDetail('${m.id}');}">
       <div class="card-label"><span>${m.label}</span><span class="freq">${m.freq}</span></div>
       <div class="card-value-row">
         <span class="card-value" id="val-${m.id}">···</span>
@@ -644,12 +660,12 @@ document.getElementById('saveModalBtn').onclick = ()=>{
 /* ---------------- 過去歷史資料彈窗 ---------------- */
 
 // 依資料頻率估算需要抓幾筆原始觀測值,才能涵蓋10年
-// (年增率類指標需要多抓12期做基期比較)
+// (年增率類指標需要多抓12期做基期比較,月增率需多抓1期)
 function historyRawLimit(m){
   const years = 10;
   if(m.freq==='日') return years*365 + 30;
   if(m.freq==='週') return years*52 + 4;
-  if(m.freq==='月') return years*12 + (m.kind==='yoy' ? 12 : 0) + 2;
+  if(m.freq==='月') return years*12 + (m.kind==='yoy' ? 12 : (m.kind==='mom' ? 1 : 0)) + 2;
   return 60;
 }
 
@@ -681,13 +697,17 @@ function buildChartSVG(points, decimals, geom){
   return `${lines}<path d="${path}" class="chart-line"/><g id="hoverLayer"></g>`;
 }
 
-function renderDetailAxis(points){
+function formatLabel(dateStr, intraday){
+  return intraday ? dateStr.slice(11,16)+' UTC' : dateStr.slice(0,7);
+}
+
+function renderDetailAxis(points, intraday){
   const axisEl = document.getElementById('detailAxis');
   if(points.length===0){ axisEl.innerHTML=''; return; }
   const labelCount = Math.min(6, points.length);
   const idxs = Array.from({length:labelCount}, (_,i)=> Math.round(i*(points.length-1)/(labelCount-1||1)));
   const unique = [...new Set(idxs)];
-  axisEl.innerHTML = unique.map(i=>`<span>${points[i].date.slice(0,7)}</span>`).join('');
+  axisEl.innerHTML = unique.map(i=>`<span>${formatLabel(points[i].date, intraday)}</span>`).join('');
 }
 
 async function computeDetailSeries(m){
@@ -707,6 +727,15 @@ async function computeDetailSeries(m){
     }
     return out;
   }
+  if(m.kind==='mom'){
+    const out=[];
+    for(let i=1;i<obs.length;i++){
+      const base = obs[i-1].value;
+      if(base===0) continue;
+      out.push({date:obs[i].date, value:((obs[i].value-base)/base)*100});
+    }
+    return out;
+  }
   if(m.kind==='yoy'){
     const out=[];
     for(let i=12;i<obs.length;i++){
@@ -719,10 +748,31 @@ async function computeDetailSeries(m){
   return [];
 }
 
-const detailState = { allPoints: [], meta: {}, rangeYears: 10 };
+// 「市場價格」型指標(kind='yahoo' 或有 intradaySymbol)才支援 1天/5天 近即時走勢
+function supportsIntraday(m){
+  return m.kind==='yahoo' || !!m.intradaySymbol;
+}
+
+function intradaySymbolOf(m){
+  return m.kind==='yahoo' ? m.symbol : m.intradaySymbol;
+}
+
+function rangeButtonsFor(m){
+  const buttons = [];
+  if(supportsIntraday(m)){
+    buttons.push({unit:'day', value:1, label:'1 天'});
+    buttons.push({unit:'day', value:5, label:'5 天'});
+  }
+  buttons.push({unit:'year', value:1, label:'1 年'});
+  buttons.push({unit:'year', value:5, label:'5 年'});
+  buttons.push({unit:'year', value:10, label:'10 年'});
+  return buttons;
+}
+
+const detailState = { allPoints: [], meta: {}, metric: null, currentRange: {unit:'year', value:10} };
 let activeChartCtx = null;
 
-function renderDetailChart(points){
+function renderDetailChart(points, intraday){
   const meta = detailState.meta;
   const svgEl = document.getElementById('detailChart');
 
@@ -736,7 +786,7 @@ function renderDetailChart(points){
 
   const geom = computeChartGeom(points);
   svgEl.innerHTML = buildChartSVG(points, meta.decimals, geom);
-  renderDetailAxis(points);
+  renderDetailAxis(points, intraday);
 
   const latest = points[points.length-1].value;
   document.getElementById('detailStats').innerHTML = `
@@ -745,22 +795,47 @@ function renderDetailChart(points){
     <div><div class="detail-stat-label">區間最低</div><div class="detail-stat-value">${fmtNum(geom.min,meta.decimals)} ${meta.unit}</div></div>
     <div><div class="detail-stat-label">資料筆數</div><div class="detail-stat-value">${points.length}</div></div>
   `;
+  const rangeLabel = intraday
+    ? `${points[0].date.replace('T',' ').slice(0,16)} ～ ${points[points.length-1].date.replace('T',' ').slice(0,16)} UTC`
+    : `${points[0].date.slice(0,10)} ～ ${points[points.length-1].date.slice(0,10)}`;
   document.getElementById('detailFoot').textContent =
-    `資料範圍：${points[0].date} ～ ${points[points.length-1].date} · 來源：${meta.source}`;
+    `資料範圍：${rangeLabel} · 來源：${intraday ? 'Yahoo Finance (近即時,可能延遲15-20分鐘)' : meta.source}`;
 
-  activeChartCtx = {points, decimals:meta.decimals, unit:meta.unit, geom};
+  activeChartCtx = {points, decimals:meta.decimals, unit:meta.unit, geom, intraday};
 }
 
-function applyRange(years){
-  detailState.rangeYears = years;
+async function applyRange(range){
+  detailState.currentRange = range;
   document.querySelectorAll('#rangeSelector button').forEach(b=>{
-    b.classList.toggle('active', Number(b.dataset.years)===years);
+    const match = b.dataset.unit===range.unit && Number(b.dataset.value)===range.value;
+    b.classList.toggle('active', match);
   });
-  const cutoff = new Date();
-  cutoff.setFullYear(cutoff.getFullYear()-years);
-  const cutoffStr = cutoff.toISOString().slice(0,10);
-  const filtered = detailState.allPoints.filter(p=>p.date>=cutoffStr);
-  renderDetailChart(filtered.length>0 ? filtered : detailState.allPoints);
+
+  if(range.unit==='year'){
+    const cutoff = new Date();
+    cutoff.setFullYear(cutoff.getFullYear()-range.value);
+    const cutoffStr = cutoff.toISOString().slice(0,10);
+    const filtered = detailState.allPoints.filter(p=>p.date>=cutoffStr);
+    renderDetailChart(filtered.length>0 ? filtered : detailState.allPoints, false);
+    return;
+  }
+
+  // day 範圍:重新抓取分鐘級近即時資料(不使用快取的長期資料)
+  const m = detailState.metric;
+  document.getElementById('detailFoot').textContent = '載入近即時走勢中…';
+  document.getElementById('detailChart').innerHTML = '';
+  activeChartCtx = null;
+  try{
+    const symbol = intradaySymbolOf(m);
+    const rangeParam = range.value===1 ? '1d' : '5d';
+    const intervalParam = range.value===1 ? '5m' : '15m';
+    const points = await fetchYahoo(symbol, rangeParam, intervalParam);
+    if(points.length===0) throw new Error('目前區間內沒有資料(可能是非交易時段)');
+    renderDetailChart(points, true);
+  }catch(e){
+    document.getElementById('detailFoot').innerHTML =
+      `<div class="detail-empty">近即時走勢載入失敗：${e.message}</div>`;
+  }
 }
 
 async function openDetail(id){
@@ -774,16 +849,12 @@ async function openDetail(id){
   document.getElementById('detailChart').innerHTML = '';
   document.getElementById('detailAxis').innerHTML = '';
   document.getElementById('detailFoot').textContent = '載入中…';
-  document.getElementById('rangeSelector').style.display = m.kind==='goldapi' ? 'none' : 'flex';
+  document.getElementById('rangeSelector').innerHTML = rangeButtonsFor(m)
+    .map(b=>`<button data-unit="${b.unit}" data-value="${b.value}">${b.label}</button>`).join('');
   document.getElementById('detailModalBg').classList.add('open');
   activeChartCtx = null;
   document.getElementById('chartTooltip').style.display = 'none';
-
-  if(m.kind==='goldapi'){
-    document.getElementById('detailFoot').innerHTML =
-      '<div class="detail-empty">黃金目前僅提供即時報價，暫不支援過去歷史走勢。</div>';
-    return;
-  }
+  detailState.metric = m;
 
   if(state.forceDemo || !state.proxyUrl){
     document.getElementById('detailFoot').innerHTML =
@@ -800,7 +871,7 @@ async function openDetail(id){
       unit: m.unit,
       source: `${m.source} (${m.series || m.symbol})`,
     };
-    applyRange(detailState.rangeYears || 10);
+    applyRange({unit:'year', value:10});
   }catch(e){
     document.getElementById('detailFoot').innerHTML =
       `<div class="detail-empty">歷史資料載入失敗：${e.message}</div>`;
@@ -817,9 +888,9 @@ document.addEventListener('keydown', (e)=>{
 });
 
 document.getElementById('rangeSelector').addEventListener('click', (e)=>{
-  const btn = e.target.closest('button[data-years]');
+  const btn = e.target.closest('button[data-unit]');
   if(!btn) return;
-  applyRange(Number(btn.dataset.years));
+  applyRange({unit:btn.dataset.unit, value:Number(btn.dataset.value)});
 });
 
 /* ---------------- 圖表 hover 顯示數值 ---------------- */
@@ -829,7 +900,7 @@ const chartTooltipEl = document.getElementById('chartTooltip');
 
 function handleChartMove(clientX, clientY){
   if(!activeChartCtx) return;
-  const {points, decimals, unit, geom} = activeChartCtx;
+  const {points, decimals, unit, geom, intraday} = activeChartCtx;
   const rect = detailChartEl.getBoundingClientRect();
   if(rect.width===0) return;
   const scaleX = geom.w/rect.width;
@@ -850,11 +921,12 @@ function handleChartMove(clientX, clientY){
 
   const containerRect = detailChartEl.parentElement.getBoundingClientRect();
   let left = clientX - containerRect.left + 14;
-  if(left > containerRect.width-130) left = clientX - containerRect.left - 130;
+  if(left > containerRect.width-140) left = clientX - containerRect.left - 140;
   chartTooltipEl.style.display = 'block';
   chartTooltipEl.style.left = left+'px';
   chartTooltipEl.style.top = Math.max(0, clientY - containerRect.top - 38)+'px';
-  chartTooltipEl.innerHTML = `<div class="tt-date">${p.date}</div><div class="tt-value">${fmtNum(p.value,decimals)} ${unit}</div>`;
+  const dateLabel = intraday ? p.date.replace('T',' ').slice(0,16)+' UTC' : p.date.slice(0,10);
+  chartTooltipEl.innerHTML = `<div class="tt-date">${dateLabel}</div><div class="tt-value">${fmtNum(p.value,decimals)} ${unit}</div>`;
 }
 
 detailChartEl.addEventListener('mousemove', (e)=> handleChartMove(e.clientX, e.clientY));
