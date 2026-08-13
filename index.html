@@ -169,7 +169,10 @@
   .card.is-error{border-top-color:var(--down);}
   .card.is-error .card-value{color:var(--down);font-size:13px;font-weight:400;font-family:'Inter',sans-serif;}
 
-  .member-card{min-height:auto;}
+  .member-card{
+    min-height:auto;
+    border-top-color:var(--panel-border); /* 預設不上色,跟其他資料卡片的brass強調色區隔開 */
+  }
   .member-role{
     font-size:12px;color:var(--text-dim);margin-top:-6px;
   }
@@ -182,13 +185,15 @@
   .member-note-preview .note-preview-text{color:var(--text);white-space:pre-wrap;}
 
   .member-card.tone-hawk{
+    border-color:var(--down);
     border-top-color:var(--down);
-    background:linear-gradient(180deg, rgba(193,102,92,0.10), rgba(193,102,92,0) 60%);
+    background:rgba(193,102,92,0.12);
   }
   .member-card.tone-hawk:hover{border-color:var(--down);}
   .member-card.tone-dove{
+    border-color:var(--up);
     border-top-color:var(--up);
-    background:linear-gradient(180deg, rgba(127,169,138,0.10), rgba(127,169,138,0) 60%);
+    background:rgba(127,169,138,0.12);
   }
   .member-card.tone-dove:hover{border-color:var(--up);}
 
