@@ -72,6 +72,23 @@
   }
   .gear-btn:hover{border-color:var(--brass);color:var(--brass);}
 
+  /* Tab bar */
+  .tabbar-outer{
+    background:#12151C;
+    border-bottom:1px solid var(--panel-border);
+  }
+  .tabbar{
+    max-width:1080px;margin:0 auto;padding:0 20px;
+    display:flex;gap:4px;
+  }
+  .tabbar button{
+    background:none;border:none;border-bottom:2px solid transparent;
+    color:var(--text-dim);font-family:'Inter',sans-serif;font-weight:600;font-size:13.5px;
+    padding:12px 4px;margin-right:22px;cursor:pointer;transition:color .15s,border-color .15s;
+  }
+  .tabbar button:hover{color:var(--text);}
+  .tabbar button.active{color:var(--brass);border-bottom-color:var(--brass);}
+
   /* Banner */
   .banner{
     margin:20px 0 0;
@@ -151,21 +168,6 @@
   .card.is-loading .card-value{color:var(--text-dim);}
   .card.is-error{border-top-color:var(--down);}
   .card.is-error .card-value{color:var(--down);font-size:13px;font-weight:400;font-family:'Inter',sans-serif;}
-
-  .card-forecast{
-    font-family:'IBM Plex Mono',monospace;font-size:11px;
-    padding:5px 7px;border:1px dashed var(--panel-border);border-radius:2px;
-    display:flex;align-items:center;gap:6px;flex-wrap:wrap;
-    cursor:pointer;transition:border-color .15s;
-  }
-  .card-forecast:hover{border-color:var(--brass);}
-  .card-forecast .forecast-empty{color:var(--text-dim);}
-  .card-forecast .forecast-label{color:var(--text-dim);}
-  .card-forecast .forecast-value{color:var(--brass);font-weight:600;}
-  .card-forecast .forecast-edit{
-    margin-left:auto;color:var(--text-dim);font-size:10px;
-    text-decoration:underline;text-underline-offset:2px;
-  }
 
   /* Modal */
   .modal-bg{
@@ -272,6 +274,13 @@
   </div>
 </header>
 
+<div class="tabbar-outer">
+  <div class="tabbar" id="tabbar">
+    <button data-tab="data" class="active">數據</button>
+    <button data-tab="market">市場價格</button>
+  </div>
+</div>
+
 <div class="wrap">
 
   <div class="banner" id="demoBanner" style="display:none;">
@@ -332,41 +341,41 @@
 /* ---------------- 設定與資料模型 ---------------- */
 
 const CATEGORIES = [
-  {key:'rates', label:'利率與央行政策'},
-  {key:'inflation', label:'通膨'},
-  {key:'jobs', label:'就業與薪資'},
-  {key:'retail', label:'消費'},
-  {key:'commodities', label:'大宗商品'},
+  {key:'rates', label:'利率與央行政策', tab:'market'},
+  {key:'commodities', label:'大宗商品', tab:'market'},
+  {key:'inflation', label:'通膨', tab:'data'},
+  {key:'jobs', label:'就業與薪資', tab:'data'},
+  {key:'retail', label:'消費', tab:'data'},
 ];
 
 // kind: level(直接顯示最新值) / yoy(年增率) / mom(月增率) / diff(與前一期差值) / yahoo(近即時報價,支援分/日資料)
 // intradaySymbol: 若有設定,代表這個 FRED 指標額外支援用 Yahoo Finance 看 1天/5天 的近即時走勢
-// hasForecast: 是否顯示「手動輸入預期值」欄位(僅適用於有排定公布時間的統計數據,不適用於連續交易的市場價格)
+// coarseIntraday: 若有設定,代表這個指標沒有可用的即時來源,1天/5天改用FRED每日資料的最近幾筆(非真即時)
 const METRICS = [
-  {id:'dgs2',     series:'DGS2',      category:'rates', label:'2 年期公債殖利率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+  {id:'dgs2',     series:'DGS2',      category:'rates', label:'2 年期公債殖利率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED', coarseIntraday:true},
   {id:'dgs5',     symbol:'^FVX',      category:'rates', label:'5 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
   {id:'dgs10',    symbol:'^TNX',      category:'rates', label:'10 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
   {id:'dgs30',    symbol:'^TYX',      category:'rates', label:'30 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
   {id:'fedfunds', series:'DFEDTARU', category:'rates', label:'聯邦資金利率(目標區間上限)', unit:'%', kind:'level', decimals:2, freq:'日', limit:10, source:'FRED'},
 
-  {id:'cpi_yoy',   series:'CPIAUCNS', category:'inflation', label:'CPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
-  {id:'cpi_mom',   series:'CPIAUCSL', category:'inflation', label:'CPI 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
-  {id:'pcepi_yoy', series:'PCEPI',    category:'inflation', label:'PCE 物價指數 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
-  {id:'pcepi_mom', series:'PCEPI',    category:'inflation', label:'PCE 物價指數 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
-  {id:'ppi_yoy',   series:'PPIFIS',   category:'inflation', label:'PPI 最終需求 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
-  {id:'ppi_mom',   series:'PPIFIS',   category:'inflation', label:'PPI 最終需求 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
+  {id:'cpi_yoy',   series:'CPIAUCNS', category:'inflation', label:'CPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'cpi_mom',   series:'CPIAUCSL', category:'inflation', label:'CPI 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'pcepi_yoy', series:'PCEPI',    category:'inflation', label:'PCE 物價指數 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'pcepi_mom', series:'PCEPI',    category:'inflation', label:'PCE 物價指數 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'ppi_yoy',   series:'PPIFIS',   category:'inflation', label:'PPI 最終需求 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'ppi_mom',   series:'PPIFIS',   category:'inflation', label:'PPI 最終需求 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
 
-  {id:'unrate',    series:'UNRATE',        category:'jobs', label:'失業率', unit:'%', kind:'level', decimals:1, freq:'月', limit:24, source:'FRED', hasForecast:true},
-  {id:'payems',    series:'PAYEMS',        category:'jobs', label:'非農就業人數(月增)', unit:'千人', kind:'diff', decimals:0, freq:'月', limit:24, source:'FRED', hasForecast:true},
-  {id:'icsa',      series:'ICSA',          category:'jobs', label:'初次申請失業救濟金人數', unit:'人', kind:'level', decimals:0, freq:'週', limit:26, source:'FRED', hasForecast:true},
-  {id:'ccsa',      series:'CCSA',          category:'jobs', label:'續領失業救濟金人數', unit:'人', kind:'level', decimals:0, freq:'週', limit:26, source:'FRED', hasForecast:true},
-  {id:'wage',      series:'CES0500000003', category:'jobs', label:'平均時薪年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
-  {id:'dspic_yoy', series:'DSPIC96',       category:'jobs', label:'實質可支配所得年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
+  {id:'unrate',    series:'UNRATE',        category:'jobs', label:'失業率', unit:'%', kind:'level', decimals:1, freq:'月', limit:24, source:'FRED'},
+  {id:'payems',    series:'PAYEMS',        category:'jobs', label:'非農就業人數(月增)', unit:'千人', kind:'diff', decimals:0, freq:'月', limit:24, source:'FRED'},
+  {id:'icsa',      series:'ICSA',          category:'jobs', label:'初次申請失業救濟金人數', unit:'人', kind:'level', decimals:0, freq:'週', limit:26, source:'FRED'},
+  {id:'ccsa',      series:'CCSA',          category:'jobs', label:'續領失業救濟金人數', unit:'人', kind:'level', decimals:0, freq:'週', limit:26, source:'FRED'},
+  {id:'wage',      series:'CES0500000003', category:'jobs', label:'平均時薪年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'dspic_yoy', series:'DSPIC96',       category:'jobs', label:'實質可支配所得年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
 
-  {id:'retail_yoy', series:'RSAFS', category:'retail', label:'零售銷售年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
-  {id:'retail_mom', series:'RSAFS', category:'retail', label:'零售銷售月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
-  {id:'pce_yoy',    series:'PCE',   category:'retail', label:'PCE(個人消費支出) 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
-  {id:'pce_mom',    series:'PCE',   category:'retail', label:'PCE(個人消費支出) 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED', hasForecast:true},
+  {id:'retail_yoy', series:'RSAFS', category:'retail', label:'零售銷售年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'retail_mom', series:'RSAFS', category:'retail', label:'零售銷售月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'pce_yoy',    series:'PCE',   category:'retail', label:'PCE(個人消費支出) 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'pce_mom',    series:'PCE',   category:'retail', label:'PCE(個人消費支出) 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
 
   {id:'oil',   series:'DCOILWTICO',   category:'commodities', label:'WTI 原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED', intradaySymbol:'CL=F'},
   {id:'brent', series:'DCOILBRENTEU', category:'commodities', label:'布蘭特原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED', intradaySymbol:'BZ=F'},
@@ -402,7 +411,8 @@ const DEMO = {
 const state = {
   proxyUrl: localStorage.getItem('econdash_proxy') || '',
   forceDemo: localStorage.getItem('econdash_demo') === '1',
-  data: {},
+  activeTab: 'data',
+  lastResults: {},
 };
 
 /* ---------------- 工具函式 ---------------- */
@@ -476,21 +486,23 @@ async function loadMetric(m){
       const values = series.map(o=>o.value);
       const value = values[values.length-1];
       const prevValue = values.length>1 ? values[values.length-2] : null;
-      return {ok:true, demo:false, value, prevValue, series:values.slice(-24)};
+      const asOf = series[series.length-1].date.slice(0,10);
+      return {ok:true, demo:false, value, prevValue, series:values.slice(-24), asOf};
     }
     const obs = await fetchFred(m.series, m.limit);
     if(obs.length===0) throw new Error('no data');
     const values = obs.map(o=>o.value);
+    const asOf = obs[obs.length-1].date;
 
     if(m.kind==='level'){
       const value = values[values.length-1];
       const prevValue = values.length>1 ? values[values.length-2] : null;
-      return {ok:true, demo:false, value, prevValue, series:values.slice(-24)};
+      return {ok:true, demo:false, value, prevValue, series:values.slice(-24), asOf};
     }
     if(m.kind==='diff'){
       const value = values.length>1 ? values[values.length-1]-values[values.length-2] : null;
       const prevValue = values.length>2 ? values[values.length-2]-values[values.length-3] : null;
-      return {ok:true, demo:false, value, prevValue, series:values.slice(-24)};
+      return {ok:true, demo:false, value, prevValue, series:values.slice(-24), asOf};
     }
     if(m.kind==='mom'){
       if(values.length<2) throw new Error('insufficient history');
@@ -503,7 +515,7 @@ async function loadMetric(m){
         const prevPrevBase = values[values.length-3];
         prevValue = ((prevLatest-prevPrevBase)/prevPrevBase)*100;
       }
-      return {ok:true, demo:false, value, prevValue, series:null};
+      return {ok:true, demo:false, value, prevValue, series:null, asOf};
     }
     if(m.kind==='yoy'){
       if(values.length<13) throw new Error('insufficient history');
@@ -516,7 +528,7 @@ async function loadMetric(m){
         const prevYearAgo = values[values.length-14];
         prevValue = ((prevLatest-prevYearAgo)/prevYearAgo)*100;
       }
-      return {ok:true, demo:false, value, prevValue, series:null};
+      return {ok:true, demo:false, value, prevValue, series:null, asOf};
     }
   }catch(e){
     return {ok:false, demo:false, error:e.message};
@@ -526,9 +538,6 @@ async function loadMetric(m){
 /* ---------------- 渲染 ---------------- */
 
 function cardHTML(m){
-  const forecastRow = m.hasForecast
-    ? `<div class="card-forecast" id="forecast-${m.id}" onclick="event.stopPropagation();editForecast('${m.id}')"></div>`
-    : '';
   return `
     <div class="card" id="card-${m.id}" tabindex="0" role="button" aria-label="查看 ${m.label} 歷史走勢" onclick="openDetail('${m.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDetail('${m.id}');}">
       <div class="card-label"><span>${m.label}</span><span class="freq">${m.freq}</span></div>
@@ -537,54 +546,15 @@ function cardHTML(m){
         <span class="card-unit">${m.unit}</span>
       </div>
       <span class="card-delta" id="delta-${m.id}"></span>
-      ${forecastRow}
       <svg class="spark" id="spark-${m.id}" viewBox="0 0 220 34" preserveAspectRatio="none"></svg>
-      <div class="card-foot"><span>${m.source} · ${m.series||m.symbol||''}</span><span id="foot-${m.id}"></span></div>
+      <div class="card-foot"><span id="asof-${m.id}">${m.source} · ${m.series||m.symbol||''}</span><span id="foot-${m.id}"></span></div>
     </div>
   `;
 }
 
-function forecastKey(id){ return `econdash_forecast_${id}`; }
-
-function renderForecast(m){
-  const el = document.getElementById(`forecast-${m.id}`);
-  if(!el) return;
-  const raw = localStorage.getItem(forecastKey(m.id));
-  if(!raw){
-    el.innerHTML = `<span class="forecast-empty">+ 輸入下期預期值</span>`;
-    return;
-  }
-  try{
-    const data = JSON.parse(raw);
-    el.innerHTML = `<span class="forecast-label">預期(手動)</span><span class="forecast-value">${fmtNum(data.value, m.decimals)} ${m.unit}</span><span class="forecast-edit">編輯</span>`;
-  }catch(e){
-    el.innerHTML = `<span class="forecast-empty">+ 輸入下期預期值</span>`;
-  }
-}
-
-function editForecast(id){
-  const m = METRICS.find(x=>x.id===id);
-  if(!m) return;
-  const current = localStorage.getItem(forecastKey(id));
-  let currentVal = '';
-  if(current){
-    try{ currentVal = JSON.parse(current).value; }catch(e){}
-  }
-  const input = window.prompt(`輸入「${m.label}」下一期的市場預期值(單位:${m.unit})。\n可參考 ForexFactory、財經媒體公布的共識預測。留空並確定可清除。`, currentVal);
-  if(input===null) return; // 取消
-  if(input.trim()===''){
-    localStorage.removeItem(forecastKey(id));
-  }else{
-    const num = parseFloat(input);
-    if(Number.isNaN(num)){ alert('請輸入數字'); return; }
-    localStorage.setItem(forecastKey(id), JSON.stringify({value:num, updatedAt:new Date().toISOString()}));
-  }
-  renderForecast(m);
-}
-
 function renderSkeleton(){
   const container = document.getElementById('sections');
-  container.innerHTML = CATEGORIES.map(cat=>{
+  container.innerHTML = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
     const items = METRICS.filter(m=>m.category===cat.key);
     if(items.length===0) return '';
     return `
@@ -597,15 +567,16 @@ function renderSkeleton(){
       </section>
     `;
   }).join('');
-  METRICS.filter(m=>m.hasForecast).forEach(renderForecast);
 }
 
 function renderCard(m, result){
   const cardEl = document.getElementById(`card-${m.id}`);
+  if(!cardEl) return; // 該指標目前不在顯示中的分頁
   const valEl = document.getElementById(`val-${m.id}`);
   const deltaEl = document.getElementById(`delta-${m.id}`);
   const sparkEl = document.getElementById(`spark-${m.id}`);
   const footEl = document.getElementById(`foot-${m.id}`);
+  const asofEl = document.getElementById(`asof-${m.id}`);
   cardEl.classList.remove('is-loading');
 
   if(!result || !result.ok){
@@ -621,6 +592,9 @@ function renderCard(m, result){
   deltaEl.textContent = chip.text;
   deltaEl.className = 'card-delta '+chip.cls;
   footEl.textContent = result.demo ? 'DEMO' : '已更新';
+  if(result.asOf && asofEl){
+    asofEl.textContent = `資料期間：${result.asOf}`;
+  }
 
   if(result.series && result.series.length>1){
     const path = sparklinePath(result.series);
@@ -641,15 +615,33 @@ async function loadAll(){
   document.getElementById('demoBanner').style.display = usingDemo ? 'flex' : 'none';
   document.getElementById('modeLabel').textContent = usingDemo ? '示範資料' : '即時資料';
 
-  const results = {};
   await Promise.all(METRICS.map(async m=>{
     const r = await loadMetric(m);
-    results[m.id] = r;
+    state.lastResults[m.id] = r;
     renderCard(m, r);
   }));
 
   document.getElementById('updatedAt').textContent = '更新於 ' + new Date().toLocaleString('zh-TW');
 }
+
+function switchTab(tab){
+  if(state.activeTab===tab) return;
+  state.activeTab = tab;
+  document.querySelectorAll('#tabbar button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.tab===tab);
+  });
+  renderSkeleton();
+  document.querySelectorAll('.card').forEach(c=>c.classList.add('is-loading'));
+  METRICS.forEach(m=>{
+    if(state.lastResults[m.id]) renderCard(m, state.lastResults[m.id]);
+  });
+}
+
+document.getElementById('tabbar').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-tab]');
+  if(!btn) return;
+  switchTab(btn.dataset.tab);
+});
 
 /* ---------------- 設定面板 ---------------- */
 
@@ -767,7 +759,8 @@ async function computeDetailSeries(m){
   return [];
 }
 
-// 「市場價格」型指標(kind='yahoo' 或有 intradaySymbol)才支援 1天/5天 近即時走勢
+// 「市場價格」型指標(kind='yahoo' 或有 intradaySymbol)才支援真正的 1天/5天 近即時走勢
+// coarseIntraday 的指標則用 FRED 每日資料裡最近幾筆頂替(非即時,但至少提供同樣的按鈕)
 function supportsIntraday(m){
   return m.kind==='yahoo' || !!m.intradaySymbol;
 }
@@ -778,7 +771,7 @@ function intradaySymbolOf(m){
 
 function rangeButtonsFor(m){
   const buttons = [];
-  if(supportsIntraday(m)){
+  if(supportsIntraday(m) || m.coarseIntraday){
     buttons.push({unit:'day', value:1, label:'1 天'});
     buttons.push({unit:'day', value:5, label:'5 天'});
   }
@@ -839,8 +832,23 @@ async function applyRange(range){
     return;
   }
 
-  // day 範圍:重新抓取分鐘級近即時資料(不使用快取的長期資料)
+  // day 範圍
   const m = detailState.metric;
+
+  if(!supportsIntraday(m) && m.coarseIntraday){
+    // 沒有即時來源,改用已快取的FRED每日資料裡最近幾個交易日頂替(非分鐘級即時)
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate()-range.value);
+    const cutoffStr = cutoff.toISOString().slice(0,10);
+    let filtered = detailState.allPoints.filter(p=>p.date>=cutoffStr);
+    if(filtered.length<2){ filtered = detailState.allPoints.slice(-Math.max(2, range.value+1)); }
+    renderDetailChart(filtered, false);
+    document.getElementById('detailFoot').textContent =
+      `此指標沒有可用的即時資料來源,以下為最近 ${filtered.length} 筆每日收盤(FRED) · 非分鐘級即時走勢`;
+    return;
+  }
+
+  // 有即時來源:重新抓取分鐘級近即時資料(不使用快取的長期資料)
   document.getElementById('detailFoot').textContent = '載入近即時走勢中…';
   document.getElementById('detailChart').innerHTML = '';
   activeChartCtx = null;
