@@ -169,6 +169,18 @@
   .card.is-error{border-top-color:var(--down);}
   .card.is-error .card-value{color:var(--down);font-size:13px;font-weight:400;font-family:'Inter',sans-serif;}
 
+  .member-card{min-height:auto;}
+  .member-role{
+    font-size:12px;color:var(--text-dim);margin-top:-6px;
+  }
+  .member-note-preview{
+    font-family:'Inter',sans-serif;font-size:12px;line-height:1.5;
+    padding:9px 10px;border:1px dashed var(--panel-border);border-radius:2px;
+    min-height:38px;margin-top:2px;
+  }
+  .member-note-preview .note-empty{color:var(--text-dim);}
+  .member-note-preview .note-preview-text{color:var(--text);white-space:pre-wrap;}
+
   /* Modal */
   .modal-bg{
     position:fixed;inset:0;background:rgba(5,7,10,0.7);
@@ -188,6 +200,12 @@
     margin-bottom:16px;
   }
   .modal input[type=text]:focus{outline:none;border-color:var(--brass);}
+  .modal textarea{
+    width:100%;background:var(--ink);border:1px solid var(--panel-border);color:var(--text);
+    padding:10px 12px;border-radius:var(--radius);font-family:'Inter',sans-serif;font-size:13px;
+    margin-bottom:16px;resize:vertical;line-height:1.6;
+  }
+  .modal textarea:focus{outline:none;border-color:var(--brass);}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;}
   .btn{
     font-family:'Inter',sans-serif;font-weight:600;font-size:13px;cursor:pointer;
@@ -278,6 +296,7 @@
   <div class="tabbar" id="tabbar">
     <button data-tab="data" class="active">數據</button>
     <button data-tab="market">市場價格</button>
+    <button data-tab="central_bank">央行專區</button>
   </div>
 </div>
 
@@ -337,15 +356,29 @@
   </div>
 </div>
 
+<div class="modal-bg" id="noteModalBg">
+  <div class="modal">
+    <h2 id="noteModalName"></h2>
+    <p id="noteModalRole" style="margin-top:-8px;"></p>
+    <label for="noteTextarea">你的看法備註</label>
+    <textarea id="noteTextarea" rows="6" placeholder="寫下你對這位委員鴿派/鷹派傾向、近期發言、投票紀錄等看法…"></textarea>
+    <div class="modal-actions">
+      <button class="btn" id="closeNoteModalBtn">取消</button>
+      <button class="btn primary" id="saveNoteModalBtn">儲存</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ---------------- 設定與資料模型 ---------------- */
 
 const CATEGORIES = [
-  {key:'rates', label:'利率與央行政策', tab:'market'},
+  {key:'rates', label:'公債殖利率', tab:'market'},
   {key:'commodities', label:'大宗商品', tab:'market'},
   {key:'inflation', label:'通膨', tab:'data'},
   {key:'jobs', label:'就業與薪資', tab:'data'},
   {key:'retail', label:'消費', tab:'data'},
+  {key:'cb_rates', label:'各國央行政策利率', tab:'central_bank'},
 ];
 
 // kind: level(直接顯示最新值) / yoy(年增率) / mom(月增率) / diff(與前一期差值) / yahoo(近即時報價,支援分/日資料)
@@ -356,7 +389,9 @@ const METRICS = [
   {id:'dgs5',     symbol:'^FVX',      category:'rates', label:'5 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
   {id:'dgs10',    symbol:'^TNX',      category:'rates', label:'10 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
   {id:'dgs30',    symbol:'^TYX',      category:'rates', label:'30 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
-  {id:'fedfunds', series:'DFEDTARU', category:'rates', label:'聯邦資金利率(目標區間上限)', unit:'%', kind:'level', decimals:2, freq:'日', limit:10, source:'FRED'},
+
+  {id:'fedfunds', series:'DFEDTARU',      category:'cb_rates', label:'聯邦資金利率(目標區間上限)', unit:'%', kind:'level', decimals:2, freq:'日', limit:10, source:'FRED'},
+  {id:'rba',      category:'cb_rates', label:'澳洲央行現金利率目標', unit:'%', kind:'rba', decimals:2, freq:'日', source:'RBA', sourceLabel:'Table F1.1', coarseIntraday:true},
 
   {id:'cpi_yoy',   series:'CPIAUCNS', category:'inflation', label:'CPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
   {id:'cpi_mom',   series:'CPIAUCSL', category:'inflation', label:'CPI 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
@@ -388,6 +423,7 @@ const DEMO = {
   dgs10:{value:4.28, prevValue:4.31, series:[4.31,4.29,4.24,4.18,4.22,4.28]},
   dgs30:{value:4.86, prevValue:4.83, series:[4.78,4.80,4.83,4.85,4.83,4.86]},
   fedfunds:{value:4.50, prevValue:4.50, series:[4.50,4.50,4.75,5.00,5.25,5.50]},
+  rba:{value:3.60, prevValue:3.60, series:[4.10,3.85,3.60,3.60,3.60,3.60]},
   cpi_yoy:{value:2.7, prevValue:2.9},
   cpi_mom:{value:0.2, prevValue:0.3},
   pcepi_yoy:{value:2.5, prevValue:2.6},
@@ -514,6 +550,74 @@ async function fetchYahoo(symbol, range, interval){
   });
 }
 
+/* --- RBA 現金利率目標:官方CSV,格式用文字比對解析(不假設固定欄位位置) --- */
+
+function parseCsvLine(line){
+  const out = [];
+  let cur = '';
+  let inQuotes = false;
+  for(let i=0;i<line.length;i++){
+    const c = line[i];
+    if(c === '"'){
+      if(inQuotes && line[i+1] === '"'){ cur += '"'; i++; }
+      else inQuotes = !inQuotes;
+    }else if(c === ',' && !inQuotes){
+      out.push(cur); cur = '';
+    }else{
+      cur += c;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+const RBA_MONTHS = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+
+function parseRbaCashRateCsv(csvText){
+  const lines = csvText.split(/\r?\n/).filter(l=>l.trim()!=='');
+  const rows = lines.map(parseCsvLine);
+
+  // 逐列找出標題文字包含「Cash Rate Target」的欄位,而不是假設它在固定第幾欄
+  let targetCol = -1;
+  for(const row of rows){
+    const idx = row.findIndex(cell => /cash rate target/i.test(cell));
+    if(idx !== -1){ targetCol = idx; break; }
+  }
+  if(targetCol === -1){
+    throw new Error('CSV 中找不到「Cash Rate Target」欄位,RBA 可能改了格式');
+  }
+
+  const out = [];
+  for(const row of rows){
+    const first = (row[0]||'').trim();
+    const m = first.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/); // RBA日期格式如 04-Jan-2011
+    if(!m) continue;
+    const mon = RBA_MONTHS[m[2]];
+    if(!mon) continue;
+    const dateStr = `${m[3]}-${String(mon).padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    const raw = row[targetCol];
+    if(raw===undefined || raw.trim()==='') continue;
+    const val = parseFloat(raw);
+    if(Number.isNaN(val)) continue;
+    out.push({date:dateStr, value:val});
+  }
+  if(out.length===0){
+    throw new Error('找到「Cash Rate Target」欄位,但沒有解析出任何日期資料列');
+  }
+  out.sort((a,b)=> a.date<b.date?-1:(a.date>b.date?1:0));
+  return out;
+}
+
+async function fetchRba(){
+  return fetchWithRetry(async ()=>{
+    const url = `${state.proxyUrl.replace(/\/$/,'')}/rba`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('RBA proxy error '+res.status);
+    const text = await res.text();
+    return parseRbaCashRateCsv(text);
+  });
+}
+
 async function loadMetric(m){
   if(state.forceDemo || !state.proxyUrl){
     return {ok:true, demo:true, ...DEMO[m.id]};
@@ -527,6 +631,14 @@ async function loadMetric(m){
       const prevValue = values.length>1 ? values[values.length-2] : null;
       const asOf = series[series.length-1].date.slice(0,10);
       return {ok:true, demo:false, value, prevValue, series:values.slice(-24), asOf};
+    }
+    if(m.kind==='rba'){
+      const series = await fetchRba();
+      if(series.length===0) throw new Error('no data');
+      const value = series[series.length-1].value;
+      const prevValue = series.length>1 ? series[series.length-2].value : null;
+      const asOf = series[series.length-1].date;
+      return {ok:true, demo:false, value, prevValue, series:series.slice(-24).map(o=>o.value), asOf};
     }
     const obs = await fetchFred(m.series, m.limit);
     if(obs.length===0) throw new Error('no data');
@@ -590,14 +702,94 @@ function cardHTML(m){
       </div>
       <span class="card-delta" id="delta-${m.id}"></span>
       <svg class="spark" id="spark-${m.id}" viewBox="0 0 220 34" preserveAspectRatio="none"></svg>
-      <div class="card-foot"><span id="asof-${m.id}">${m.source} · ${m.series||m.symbol||''}</span><span id="foot-${m.id}"></span></div>
+      <div class="card-foot"><span id="asof-${m.id}">${m.source} · ${m.series||m.symbol||m.sourceLabel||''}</span><span id="foot-${m.id}"></span></div>
     </div>
   `;
 }
 
+/* ---------------- FOMC 有投票權委員(可自行輸入看法備註) ---------------- */
+
+const FOMC_MEMBERS = [
+  {id:'warsh',     name:'Kevin Warsh',        role:'Board of Governors, Chairman'},
+  {id:'williams',  name:'John C. Williams',   role:'New York, Vice Chair'},
+  {id:'barr',      name:'Michael S. Barr',    role:'Board of Governors'},
+  {id:'bowman',    name:'Michelle W. Bowman', role:'Board of Governors'},
+  {id:'cook',      name:'Lisa D. Cook',       role:'Board of Governors'},
+  {id:'hammack',   name:'Beth M. Hammack',    role:'Cleveland'},
+  {id:'jefferson', name:'Philip N. Jefferson',role:'Board of Governors'},
+  {id:'kashkari',  name:'Neel Kashkari',      role:'Minneapolis'},
+  {id:'logan',     name:'Lorie K. Logan',     role:'Dallas'},
+  {id:'paulson',   name:'Anna Paulson',       role:'Philadelphia'},
+  {id:'powell',    name:'Jerome H. Powell',   role:'Board of Governors'},
+  {id:'waller',    name:'Christopher J. Waller', role:'Board of Governors'},
+];
+
+function noteKey(id){ return `econdash_note_${id}`; }
+
+function memberCardHTML(mem){
+  return `
+    <div class="card member-card" id="member-${mem.id}" tabindex="0" role="button" aria-label="編輯對 ${mem.name} 的看法備註" onclick="openMemberNote('${mem.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openMemberNote('${mem.id}');}">
+      <div class="card-label"><span>${mem.name}</span></div>
+      <div class="member-role">${mem.role}</div>
+      <div class="member-note-preview" id="notepreview-${mem.id}"></div>
+    </div>
+  `;
+}
+
+function fomcSectionHTML(){
+  return `
+    <section class="category">
+      <div class="cat-head">
+        <span class="cat-eyebrow">fomc 2026</span>
+        <h2 class="cat-title">FOMC 有投票權委員</h2>
+      </div>
+      <div class="grid">${FOMC_MEMBERS.map(memberCardHTML).join('')}</div>
+    </section>
+  `;
+}
+
+function renderMemberNotePreview(id){
+  const el = document.getElementById(`notepreview-${id}`);
+  if(!el) return;
+  const saved = localStorage.getItem(noteKey(id));
+  el.innerHTML = '';
+  const span = document.createElement('span');
+  if(!saved){
+    span.className = 'note-empty';
+    span.textContent = '+ 新增你的看法';
+  }else{
+    span.className = 'note-preview-text';
+    span.textContent = saved.length > 60 ? saved.slice(0,60)+'…' : saved;
+  }
+  el.appendChild(span);
+}
+
+function renderAllMemberNotePreviews(){
+  FOMC_MEMBERS.forEach(m=>renderMemberNotePreview(m.id));
+}
+
+let currentNoteMemberId = null;
+
+function openMemberNote(id){
+  const mem = FOMC_MEMBERS.find(x=>x.id===id);
+  if(!mem) return;
+  currentNoteMemberId = id;
+  document.getElementById('noteModalName').textContent = mem.name;
+  document.getElementById('noteModalRole').textContent = mem.role;
+  document.getElementById('noteTextarea').value = localStorage.getItem(noteKey(id)) || '';
+  document.getElementById('noteModalBg').classList.add('open');
+}
+
+function closeNoteModal(){
+  document.getElementById('noteModalBg').classList.remove('open');
+  currentNoteMemberId = null;
+}
+
+/* ---------------- 渲染 ---------------- */
+
 function renderSkeleton(){
   const container = document.getElementById('sections');
-  container.innerHTML = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
+  let html = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
     const items = METRICS.filter(m=>m.category===cat.key);
     if(items.length===0) return '';
     return `
@@ -610,6 +802,16 @@ function renderSkeleton(){
       </section>
     `;
   }).join('');
+
+  if(state.activeTab==='central_bank'){
+    html += fomcSectionHTML();
+  }
+
+  container.innerHTML = html;
+
+  if(state.activeTab==='central_bank'){
+    renderAllMemberNotePreviews();
+  }
 }
 
 function renderCard(m, result){
@@ -770,6 +972,9 @@ function renderDetailAxis(points, intraday){
 async function computeDetailSeries(m){
   if(m.kind==='yahoo'){
     return await fetchYahoo(m.symbol, '10y', '1d');
+  }
+  if(m.kind==='rba'){
+    return await fetchRba(); // CSV本身就是完整歷史,已由舊到新排序
   }
   const rawLimit = historyRawLimit(m);
   const obs = await fetchFred(m.series, rawLimit); // 由舊到新
@@ -948,7 +1153,7 @@ async function openDetail(id){
     detailState.meta = {
       decimals: m.decimals,
       unit: m.unit,
-      source: `${m.source} (${m.series || m.symbol})`,
+      source: `${m.source} (${m.series || m.symbol || m.sourceLabel || ''})`,
     };
     applyRange({unit:'year', value:10});
   }catch(e){
@@ -963,8 +1168,24 @@ document.getElementById('detailModalBg').onclick = (e)=>{
   if(e.target.id==='detailModalBg') closeDetail();
 };
 document.addEventListener('keydown', (e)=>{
-  if(e.key==='Escape'){ closeDetail(); closeModal(); }
+  if(e.key==='Escape'){ closeDetail(); closeModal(); closeNoteModal(); }
 });
+
+document.getElementById('closeNoteModalBtn').onclick = closeNoteModal;
+document.getElementById('noteModalBg').onclick = (e)=>{
+  if(e.target.id==='noteModalBg') closeNoteModal();
+};
+document.getElementById('saveNoteModalBtn').onclick = ()=>{
+  if(!currentNoteMemberId) return;
+  const val = document.getElementById('noteTextarea').value;
+  if(val.trim()===''){
+    localStorage.removeItem(noteKey(currentNoteMemberId));
+  }else{
+    localStorage.setItem(noteKey(currentNoteMemberId), val);
+  }
+  renderMemberNotePreview(currentNoteMemberId);
+  closeNoteModal();
+};
 
 document.getElementById('rangeSelector').addEventListener('click', (e)=>{
   const btn = e.target.closest('button[data-unit]');
