@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
@@ -408,8 +408,13 @@ const DEMO = {
   brent:{value:67.8, prevValue:66.9, series:[65.9,66.6,65.2,67.0,66.9,67.8]},
 };
 
+// ⚙ 把你的 Cloudflare Worker 網址填在這裡(記得重新上傳這個檔案),
+// 這樣不管在哪台裝置、哪個瀏覽器打開,都會自動使用即時資料,不需要每台都手動設定一次。
+// 範例: const DEFAULT_PROXY_URL = 'https://econ-dashboard-proxy.你的帳號.workers.dev';
+const DEFAULT_PROXY_URL = 'https://econ-dashboard.cclemon0523.workers.dev';
+
 const state = {
-  proxyUrl: localStorage.getItem('econdash_proxy') || '',
+  proxyUrl: localStorage.getItem('econdash_proxy') || DEFAULT_PROXY_URL,
   forceDemo: localStorage.getItem('econdash_demo') === '1',
   activeTab: 'data',
   lastResults: {},
