@@ -181,6 +181,17 @@
   .member-note-preview .note-empty{color:var(--text-dim);}
   .member-note-preview .note-preview-text{color:var(--text);white-space:pre-wrap;}
 
+  .member-card.tone-hawk{
+    border-top-color:var(--down);
+    background:linear-gradient(180deg, rgba(193,102,92,0.10), rgba(193,102,92,0) 60%);
+  }
+  .member-card.tone-hawk:hover{border-color:var(--down);}
+  .member-card.tone-dove{
+    border-top-color:var(--up);
+    background:linear-gradient(180deg, rgba(127,169,138,0.10), rgba(127,169,138,0) 60%);
+  }
+  .member-card.tone-dove:hover{border-color:var(--up);}
+
   /* Modal */
   .modal-bg{
     position:fixed;inset:0;background:rgba(5,7,10,0.7);
@@ -777,8 +788,31 @@ function renderMemberNotePreview(id){
   el.appendChild(span);
 }
 
+// 看法備註裡如果出現 hawk(鷹派)就標紅、dove(鴿派)就標綠;兩者都出現或都沒有則不特別標色
+function classifyMemberTone(text){
+  if(!text) return null;
+  const t = text.toLowerCase();
+  const hasHawk = /hawk/.test(t);
+  const hasDove = /dove/.test(t);
+  if(hasHawk && !hasDove) return 'hawk';
+  if(hasDove && !hasHawk) return 'dove';
+  return null;
+}
+
+function applyMemberTone(id){
+  const el = document.getElementById(`member-${id}`);
+  if(!el) return;
+  const saved = localStorage.getItem(noteKey(id)) || '';
+  const tone = classifyMemberTone(saved);
+  el.classList.remove('tone-hawk','tone-dove');
+  if(tone) el.classList.add('tone-'+tone);
+}
+
 function renderAllMemberNotePreviews(){
-  FOMC_MEMBERS.forEach(m=>renderMemberNotePreview(m.id));
+  FOMC_MEMBERS.forEach(m=>{
+    renderMemberNotePreview(m.id);
+    applyMemberTone(m.id);
+  });
 }
 
 let currentNoteMemberId = null;
@@ -1197,6 +1231,7 @@ document.getElementById('saveNoteModalBtn').onclick = ()=>{
     localStorage.setItem(noteKey(currentNoteMemberId), val);
   }
   renderMemberNotePreview(currentNoteMemberId);
+  applyMemberTone(currentNoteMemberId);
   closeNoteModal();
 };
 
