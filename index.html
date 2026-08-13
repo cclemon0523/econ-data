@@ -391,7 +391,7 @@ const METRICS = [
   {id:'dgs30',    symbol:'^TYX',      category:'rates', label:'30 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
 
   {id:'fedfunds', series:'DFEDTARU',      category:'cb_rates', label:'聯邦資金利率(目標區間上限)', unit:'%', kind:'level', decimals:2, freq:'日', limit:10, source:'FRED'},
-  {id:'rba',      category:'cb_rates', label:'澳洲央行現金利率目標', unit:'%', kind:'rba', decimals:2, freq:'日', source:'RBA', sourceLabel:'Table F1.1', coarseIntraday:true},
+  {id:'rba',      category:'cb_rates', label:'澳洲央行現金利率目標', unit:'%', kind:'rba', decimals:2, freq:'月', source:'RBA', sourceLabel:'Table F1.1'},
 
   {id:'cpi_yoy',   series:'CPIAUCNS', category:'inflation', label:'CPI 年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
   {id:'cpi_mom',   series:'CPIAUCSL', category:'inflation', label:'CPI 月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
@@ -571,8 +571,6 @@ function parseCsvLine(line){
   return out;
 }
 
-const RBA_MONTHS = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
-
 function parseRbaCashRateCsv(csvText){
   const lines = csvText.split(/\r?\n/).filter(l=>l.trim()!=='');
   const rows = lines.map(parseCsvLine);
@@ -590,11 +588,12 @@ function parseRbaCashRateCsv(csvText){
   const out = [];
   for(const row of rows){
     const first = (row[0]||'').trim();
-    const m = first.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/); // RBA日期格式如 04-Jan-2011
+    const m = first.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // RBA日期格式為 DD/MM/YYYY,例如 30/06/1969
     if(!m) continue;
-    const mon = RBA_MONTHS[m[2]];
-    if(!mon) continue;
-    const dateStr = `${m[3]}-${String(mon).padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    const day = m[1].padStart(2,'0');
+    const month = m[2].padStart(2,'0');
+    const year = m[3];
+    const dateStr = `${year}-${month}-${day}`;
     const raw = row[targetCol];
     if(raw===undefined || raw.trim()==='') continue;
     const val = parseFloat(raw);
