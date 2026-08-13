@@ -294,7 +294,7 @@
 
 <div class="tabbar-outer">
   <div class="tabbar" id="tabbar">
-    <button data-tab="data" class="active">數據</button>
+    <button data-tab="data" class="active">經濟數據</button>
     <button data-tab="market">市場價格</button>
     <button data-tab="central_bank">央行專區</button>
   </div>
@@ -374,6 +374,7 @@
 
 const CATEGORIES = [
   {key:'rates', label:'公債殖利率', tab:'market'},
+  {key:'inflation_expectations', label:'通膨預期', tab:'market'},
   {key:'commodities', label:'大宗商品', tab:'market'},
   {key:'inflation', label:'通膨', tab:'data'},
   {key:'jobs', label:'就業與薪資', tab:'data'},
@@ -389,6 +390,13 @@ const METRICS = [
   {id:'dgs5',     symbol:'^FVX',      category:'rates', label:'5 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
   {id:'dgs10',    symbol:'^TNX',      category:'rates', label:'10 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
   {id:'dgs30',    symbol:'^TYX',      category:'rates', label:'30 年期公債殖利率', unit:'%', kind:'yahoo', decimals:2, freq:'近即時', source:'Yahoo Finance'},
+  {id:'sofr',     series:'SOFR',       category:'rates', label:'SOFR(有擔保隔夜融資利率)', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+  {id:'dfii10',   series:'DFII10',     category:'rates', label:'10 年期抗通膨公債(TIPS)殖利率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+  {id:'t10y2y',   series:'T10Y2Y',     category:'rates', label:'10年期減2年期公債利差', unit:'pp', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+  {id:'oas_ig',   series:'BAMLC0A0CM', category:'rates', label:'投資級公司債 OAS', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+
+  {id:'t10yie', series:'T10YIE', category:'inflation_expectations', label:'10年期損益平衡通膨率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+  {id:'t5y5y',  series:'T5YIFR', category:'inflation_expectations', label:'5年期5年期遠期通膨預期率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
 
   {id:'fedfunds', series:'DFEDTARU',      category:'cb_rates', label:'聯邦資金利率(目標區間上限)', unit:'%', kind:'level', decimals:2, freq:'日', limit:10, source:'FRED'},
   {id:'rba',      category:'cb_rates', label:'澳洲央行現金利率目標', unit:'%', kind:'rba', decimals:2, freq:'月', source:'RBA', sourceLabel:'Table F1.1'},
@@ -422,6 +430,12 @@ const DEMO = {
   dgs5:{value:3.98, prevValue:3.95, series:[3.90,3.93,3.95,3.96,3.95,3.98]},
   dgs10:{value:4.28, prevValue:4.31, series:[4.31,4.29,4.24,4.18,4.22,4.28]},
   dgs30:{value:4.86, prevValue:4.83, series:[4.78,4.80,4.83,4.85,4.83,4.86]},
+  sofr:{value:4.33, prevValue:4.31, series:[4.29,4.30,4.31,4.32,4.31,4.33]},
+  dfii10:{value:1.98, prevValue:2.01, series:[2.05,2.03,2.01,1.99,2.01,1.98]},
+  t10y2y:{value:0.52, prevValue:0.48, series:[0.40,0.44,0.46,0.49,0.48,0.52]},
+  oas_ig:{value:0.92, prevValue:0.95, series:[1.02,0.98,0.96,0.94,0.95,0.92]},
+  t10yie:{value:2.31, prevValue:2.28, series:[2.22,2.25,2.27,2.29,2.28,2.31]},
+  t5y5y:{value:2.24, prevValue:2.22, series:[2.18,2.20,2.21,2.23,2.22,2.24]},
   fedfunds:{value:4.50, prevValue:4.50, series:[4.50,4.50,4.75,5.00,5.25,5.50]},
   rba:{value:3.60, prevValue:3.60, series:[4.10,3.85,3.60,3.60,3.60,3.60]},
   cpi_yoy:{value:2.7, prevValue:2.9},
