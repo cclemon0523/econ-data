@@ -931,15 +931,15 @@ function closeNoteModal(){
 /* ---------------- 經濟日曆(FRED 官方發布時程) ---------------- */
 
 const CALENDAR_RELEASES = [
-  {id:'employment', name:'就業報告(非農/失業率)', releaseId:50},
-  {id:'cpi',         name:'CPI 消費者物價指數',    releaseId:10},
-  {id:'ppi',         name:'PPI 生產者物價指數',    releaseId:46},
-  {id:'pce',         name:'PCE 個人所得與支出',    releaseId:54},
-  {id:'retail',      name:'零售銷售',              releaseId:9},
-  {id:'jolts',       name:'JOLTS 職缺與離職率',    releaseId:192},
-  {id:'eci',         name:'就業成本指數(ECI)',      releaseId:11},
-  {id:'gdp',         name:'GDP 國內生產毛額',       releaseId:53},
-  {id:'fomc',        name:'FOMC 利率決議',          releaseId:101},
+  {id:'employment', name:'Employment Situation', releaseId:50},
+  {id:'cpi',         name:'Consumer Price Index (CPI)', releaseId:10},
+  {id:'ppi',         name:'Producer Price Index (PPI)', releaseId:46},
+  {id:'pce',         name:'Personal Income and Outlays (PCE)', releaseId:54},
+  {id:'retail',      name:'Retail Sales', releaseId:9},
+  {id:'jolts',       name:'JOLTS (Job Openings & Labor Turnover)', releaseId:192},
+  {id:'eci',         name:'Employment Cost Index (ECI)', releaseId:11},
+  {id:'gdp',         name:'Gross Domestic Product (GDP)', releaseId:53},
+  {id:'fomc',        name:'FOMC Rate Decision', releaseId:101},
 ];
 
 async function fetchReleaseDates(releaseId){
