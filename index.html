@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>美國經濟儀表板 · US Macro Dashboard</title>
+<title>經濟與利率儀表板 · Macro & Rates Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -130,6 +130,35 @@
     grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
     gap:14px;
   }
+
+  .metric-table-wrap{
+    border:1px solid var(--panel-border);border-radius:2px;overflow-x:auto;
+  }
+  .metric-table{width:100%;border-collapse:collapse;min-width:520px;}
+  .metric-table thead th{
+    text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--text-dim);padding:9px 14px;border-bottom:1px solid var(--panel-border);background:#12151C;
+    white-space:nowrap;
+  }
+  .metric-table tbody tr.metric-row{
+    cursor:pointer;transition:background .15s;
+  }
+  .metric-table tbody tr.metric-row:not(:last-child){border-bottom:1px solid var(--panel-border);}
+  .metric-table tbody tr.metric-row:hover{background:rgba(201,166,107,0.07);}
+  .metric-table tbody tr.metric-row:focus-visible{outline:2px solid var(--brass);outline-offset:-2px;}
+  .metric-table td{padding:9px 14px;vertical-align:middle;}
+  .metric-name{font-size:13px;color:var(--paper);white-space:nowrap;}
+  .metric-freq-badge{
+    font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);
+    border:1px solid var(--panel-border);padding:1px 5px;border-radius:2px;margin-left:8px;white-space:nowrap;
+  }
+  .metric-value{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;color:var(--paper);white-space:nowrap;}
+  .metric-unit{font-size:11px;color:var(--text-dim);margin-left:4px;}
+  .metric-delta{font-family:'IBM Plex Mono',monospace;font-size:12px;white-space:nowrap;}
+  .metric-asof{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);white-space:nowrap;}
+  .metric-foot{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim);white-space:nowrap;text-align:right;}
+  .metric-row.is-loading .metric-value{color:var(--text-dim);}
+  .metric-row.is-error .metric-value{color:var(--down);}
 
   .card{
     background:var(--panel);
@@ -431,7 +460,7 @@
 <header class="masthead">
   <div class="masthead-inner">
     <div>
-      <h1 class="masthead-title">美國經濟儀表板</h1>
+      <h1 class="masthead-title">經濟與利率儀表板</h1>
       <div class="masthead-sub">US MACRO DASHBOARD · LIVE FEED</div>
     </div>
     <div style="display:flex;align-items:center;">
@@ -975,6 +1004,40 @@ function cardHTML(m){
       <svg class="spark" id="spark-${m.id}" viewBox="0 0 220 34" preserveAspectRatio="none"></svg>
       <div class="card-foot"><span id="asof-${m.id}">${m.source} · ${m.series||m.symbol||m.sourceLabel||''}</span><span id="foot-${m.id}"></span></div>
     </div>
+  `;
+}
+
+// 表格列版本(用於經濟數據分頁):跟cardHTML共用同一組id(val-/delta-/asof-/foot-),
+// 所以renderCard完全不用改就能同時支援兩種排版
+function tableRowHTML(m){
+  return `
+    <tr class="metric-row" id="card-${m.id}" tabindex="0" role="button" aria-label="查看 ${m.label} 歷史走勢" onclick="openDetail('${m.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDetail('${m.id}');}">
+      <td class="metric-name">${m.label}<span class="metric-freq-badge">${m.freq}</span></td>
+      <td class="metric-value"><span id="val-${m.id}">···</span><span class="metric-unit">${m.unit}</span></td>
+      <td class="metric-delta"><span class="card-delta" id="delta-${m.id}"></span></td>
+      <td class="metric-asof" id="asof-${m.id}">${m.source}</td>
+      <td class="metric-foot" id="foot-${m.id}"></td>
+    </tr>
+  `;
+}
+
+function tableSectionHTML(cat, items){
+  return `
+    <section class="category">
+      <div class="cat-head">
+        <span class="cat-eyebrow">${cat.key}</span>
+        <h2 class="cat-title">${cat.label}</h2>
+      </div>
+      ${cat.description ? `<p class="cat-description">${cat.description}</p>` : ''}
+      <div class="metric-table-wrap">
+        <table class="metric-table">
+          <thead>
+            <tr><th>指標</th><th>最新值</th><th>漲跌</th><th>資料期間</th><th></th></tr>
+          </thead>
+          <tbody>${items.map(tableRowHTML).join('')}</tbody>
+        </table>
+      </div>
+    </section>
   `;
 }
 
@@ -1988,6 +2051,9 @@ async function renderSkeleton(){
   let html = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
     const items = METRICS.filter(m=>m.category===cat.key);
     if(items.length===0) return '';
+    if(state.activeTab==='data'){
+      return tableSectionHTML(cat, items);
+    }
     return `
       <section class="category">
         <div class="cat-head">
@@ -2042,27 +2108,31 @@ function renderCard(m, result){
 
   if(!result || !result.ok){
     cardEl.classList.add('is-error');
-    valEl.textContent = '資料暫不可用';
-    deltaEl.textContent = '';
-    footEl.textContent = result && result.error ? result.error : '請確認 Proxy 設定';
+    if(valEl) valEl.textContent = '資料暫不可用';
+    if(deltaEl) deltaEl.textContent = '';
+    if(footEl) footEl.textContent = result && result.error ? result.error : '請確認 Proxy 設定';
     return;
   }
 
-  valEl.textContent = fmtNum(result.value, m.decimals);
+  if(valEl) valEl.textContent = fmtNum(result.value, m.decimals);
   const chip = deltaChip(result.value, result.prevValue, m.decimals, m.unit==='%'?' pp':'');
-  deltaEl.textContent = chip.text;
-  deltaEl.className = 'card-delta '+chip.cls;
-  footEl.textContent = result.demo ? 'DEMO' : '已更新';
+  if(deltaEl){
+    deltaEl.textContent = chip.text;
+    deltaEl.className = 'card-delta '+chip.cls;
+  }
+  if(footEl) footEl.textContent = result.demo ? 'DEMO' : '已更新';
   if(result.asOf && asofEl){
     asofEl.textContent = `資料期間：${result.asOf}`;
   }
 
-  if(result.series && result.series.length>1){
-    const path = sparklinePath(result.series);
-    const rising = result.series[result.series.length-1] >= result.series[0];
-    sparkEl.innerHTML = `<path d="${path}" style="stroke:${rising?'var(--up)':'var(--down)'}"/>`;
-  }else{
-    sparkEl.innerHTML = '';
+  if(sparkEl){
+    if(result.series && result.series.length>1){
+      const path = sparklinePath(result.series);
+      const rising = result.series[result.series.length-1] >= result.series[0];
+      sparkEl.innerHTML = `<path d="${path}" style="stroke:${rising?'var(--up)':'var(--down)'}"/>`;
+    }else{
+      sparkEl.innerHTML = '';
+    }
   }
 }
 
@@ -2070,7 +2140,7 @@ function renderCard(m, result){
 
 async function loadAll(){
   await renderSkeleton();
-  document.querySelectorAll('.card').forEach(c=>c.classList.add('is-loading'));
+  document.querySelectorAll('.card, .metric-row').forEach(c=>c.classList.add('is-loading'));
 
   const usingDemo = state.forceDemo || !state.proxyUrl;
   document.getElementById('demoBanner').style.display = usingDemo ? 'flex' : 'none';
@@ -2095,7 +2165,7 @@ async function switchTab(tab){
     b.classList.toggle('active', b.dataset.tab===tab);
   });
   await renderSkeleton();
-  document.querySelectorAll('.card').forEach(c=>c.classList.add('is-loading'));
+  document.querySelectorAll('.card, .metric-row').forEach(c=>c.classList.add('is-loading'));
   METRICS.forEach(m=>{
     if(state.lastResults[m.id]) renderCard(m, state.lastResults[m.id]);
   });
