@@ -291,6 +291,42 @@
     margin-bottom:16px;
   }
   .modal input[type=text]:focus{outline:none;border-color:var(--brass);}
+  .modal select,
+  .modal input[type=date]{
+    width:100%;background:var(--ink);border:1px solid var(--panel-border);color:var(--text);
+    padding:10px 12px;border-radius:var(--radius);font-family:'IBM Plex Mono',monospace;font-size:13px;
+    margin-bottom:16px;
+  }
+  .modal select:focus,
+  .modal input[type=date]:focus{outline:none;border-color:var(--brass);}
+
+  /* Trade journal */
+  .trade-list{display:flex;flex-direction:column;gap:1px;background:var(--panel-border);border:1px solid var(--panel-border);border-radius:2px;overflow:hidden;}
+  .trade-row{
+    display:flex;align-items:center;gap:16px;
+    background:var(--panel);padding:12px 16px;
+  }
+  .trade-date{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-dim);
+    width:76px;flex-shrink:0;
+  }
+  .trade-info{flex:1;min-width:0;}
+  .trade-title{font-size:13.5px;color:var(--paper);display:flex;align-items:center;gap:8px;}
+  .trade-type-badge{
+    font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);
+    border:1px solid var(--panel-border);padding:1px 5px;border-radius:2px;
+  }
+  .trade-sub{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);margin-top:2px;}
+  .trade-side{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;white-space:nowrap;flex-shrink:0;
+  }
+  .trade-delete{
+    background:none;border:1px solid var(--panel-border);color:var(--text-dim);
+    width:26px;height:26px;border-radius:2px;cursor:pointer;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;font-size:12px;
+    transition:border-color .15s,color .15s;
+  }
+  .trade-delete:hover{border-color:var(--down);color:var(--down);}
   .modal textarea{
     width:100%;background:var(--ink);border:1px solid var(--panel-border);color:var(--text);
     padding:10px 12px;border-radius:var(--radius);font-family:'Inter',sans-serif;font-size:13px;
@@ -389,6 +425,7 @@
     <button data-tab="market">市場價格</button>
     <button data-tab="central_bank">央行專區</button>
     <button data-tab="economic_calendar">經濟日曆</button>
+    <button data-tab="trade_journal">交易日誌</button>
   </div>
 </div>
 
@@ -457,6 +494,65 @@
     <div class="modal-actions">
       <button class="btn" id="closeNoteModalBtn">取消</button>
       <button class="btn primary" id="saveNoteModalBtn">儲存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="tradeModalBg">
+  <div class="modal">
+    <h2>新增交易</h2>
+    <label for="tradeDate">交易日期</label>
+    <input type="date" id="tradeDate">
+
+    <label for="tradeType">商品類型</label>
+    <select id="tradeType">
+      <option value="spot">現貨</option>
+      <option value="futures">期貨</option>
+    </select>
+
+    <div id="spotFields">
+      <label for="tradeIsin">ISIN</label>
+      <input type="text" id="tradeIsin" placeholder="例如 US912828XXXX">
+
+      <label for="spotSide">買 / 賣</label>
+      <select id="spotSide">
+        <option value="buy">買進</option>
+        <option value="sell">賣出</option>
+      </select>
+
+      <label for="spotRate">利率（%）</label>
+      <input type="text" id="spotRate" placeholder="例如 4.250" inputmode="decimal">
+
+      <label for="spotFaceValue">面額</label>
+      <input type="text" id="spotFaceValue" placeholder="例如 1000000" inputmode="decimal">
+    </div>
+
+    <div id="futuresFields" style="display:none;">
+      <label for="futuresContract">合約</label>
+      <select id="futuresContract">
+        <option value="TU">TU（2年期公債期貨）</option>
+        <option value="FV">FV（5年期公債期貨）</option>
+        <option value="TY">TY（10年期公債期貨）</option>
+        <option value="TN">TN（Ultra 10年期公債期貨）</option>
+        <option value="US">US（30年期公債期貨）</option>
+      </select>
+
+      <label for="futuresDirection">方向</label>
+      <select id="futuresDirection">
+        <option value="long">做多</option>
+        <option value="short">做空</option>
+      </select>
+
+      <label for="futuresQty">口數</label>
+      <input type="text" id="futuresQty" placeholder="例如 10" inputmode="decimal">
+
+      <label for="futuresRate">利率（%）</label>
+      <input type="text" id="futuresRate" placeholder="例如 4.100" inputmode="decimal">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" id="closeTradeModalBtn">取消</button>
+      <button class="btn primary" id="saveTradeModalBtn">儲存</button>
     </div>
   </div>
 </div>
@@ -878,6 +974,8 @@ function noteKey(id){ return `econdash_note_${id}`; } // 本機備援模式用�
 // notesMode: 'unknown'(尚未確認) / 'remote'(已連上雲端KV) / 'local'(退回本機儲存)
 state.notesMode = 'unknown';
 state.remoteNotes = {};
+state.tradesMode = 'unknown';
+state.trades = null;
 
 async function ensureNotesLoaded(){
   if(state.notesMode !== 'unknown') return;
@@ -1442,6 +1540,209 @@ function renderTenYearEstimator(){
   `;
 }
 
+/* ---------------- 交易日誌(雲端儲存,共用 NOTES_KV) ---------------- */
+
+function tradeJournalSectionHTML(){
+  return `
+    <section class="category">
+      <div class="cat-head">
+        <span class="cat-eyebrow">trade journal</span>
+        <h2 class="cat-title">交易日誌</h2>
+      </div>
+      <button class="btn primary" id="addTradeBtn" style="margin-bottom:10px;">+ 新增交易</button>
+      <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 14px;" id="tradeJournalSyncNote"></p>
+      <div id="tradeTableWrap"><div class="calendar-loading">載入交易紀錄中…</div></div>
+    </section>
+  `;
+}
+
+function tradesStorageKey(){ return 'econdash_trades'; } // 本機備援模式用的key
+
+async function ensureTradesLoaded(){
+  if(state.tradesMode !== 'unknown') return;
+  if(state.forceDemo || !state.proxyUrl){
+    state.tradesMode = 'local';
+    const raw = localStorage.getItem(tradesStorageKey());
+    state.trades = raw ? JSON.parse(raw) : [];
+    return;
+  }
+  try{
+    const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/trades`);
+    if(!res.ok) throw new Error('load failed '+res.status);
+    state.trades = await res.json();
+    state.tradesMode = 'remote';
+  }catch(e){
+    console.error('讀取雲端交易紀錄失敗,退回本機模式', e);
+    state.tradesMode = 'local';
+    const raw = localStorage.getItem(tradesStorageKey());
+    state.trades = raw ? JSON.parse(raw) : [];
+  }
+}
+
+async function addTradeRecord(trade){
+  if(state.tradesMode==='remote'){
+    try{
+      const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/trades`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(trade),
+      });
+      if(!res.ok) throw new Error('save failed '+res.status);
+      const data = await res.json();
+      state.trades = data.trades || state.trades;
+      return {ok:true};
+    }catch(e){
+      return {ok:false, error:e.message};
+    }
+  }
+  const newTrade = {id: Date.now().toString(36)+Math.random().toString(36).slice(2,8), ...trade};
+  state.trades = state.trades || [];
+  state.trades.push(newTrade);
+  localStorage.setItem(tradesStorageKey(), JSON.stringify(state.trades));
+  return {ok:true};
+}
+
+async function deleteTrade(id){
+  if(!confirm('確定要刪除這筆交易紀錄嗎?')) return;
+  if(state.tradesMode==='remote'){
+    try{
+      const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/trades?id=${encodeURIComponent(id)}`, {method:'DELETE'});
+      if(!res.ok) throw new Error('delete failed '+res.status);
+      const data = await res.json();
+      state.trades = data.trades || (state.trades||[]).filter(t=>t.id!==id);
+    }catch(e){
+      alert('刪除失敗：'+e.message);
+      return;
+    }
+  }else{
+    state.trades = (state.trades||[]).filter(t=>t.id!==id);
+    localStorage.setItem(tradesStorageKey(), JSON.stringify(state.trades));
+  }
+  renderTradeTable(state.trades);
+}
+
+function tradeRowHTML(t){
+  const isSpot = t.instrumentType === 'spot';
+  const title = isSpot ? (t.isin || '(無ISIN)') : `${t.contract} 期貨`;
+  const sideLabel = isSpot ? (t.side==='buy' ? '買進' : '賣出') : (t.direction==='long' ? '做多' : '做空');
+  const isBullish = isSpot ? t.side==='buy' : t.direction==='long';
+  const qtyLabel = isSpot ? `面額 ${fmtNum(t.faceValue,0)}` : `${fmtNum(t.quantity,0)} 口`;
+  const rateLabel = Number.isFinite(t.rate) ? `${fmtNum(t.rate,3)}%` : '—';
+  return `
+    <div class="trade-row">
+      <div class="trade-date">${t.date||'—'}</div>
+      <div class="trade-info">
+        <div class="trade-title">${title}<span class="trade-type-badge">${isSpot?'現貨':'期貨'}</span></div>
+        <div class="trade-sub">${qtyLabel} · 利率 ${rateLabel}</div>
+      </div>
+      <div class="trade-side card-delta ${isBullish?'up':'down'}">${sideLabel}</div>
+      <button class="trade-delete" onclick="deleteTrade('${t.id}')" title="刪除">✕</button>
+    </div>
+  `;
+}
+
+function renderTradeTable(trades){
+  const wrap = document.getElementById('tradeTableWrap');
+  if(!wrap) return;
+  if(!trades || trades.length===0){
+    wrap.innerHTML = '<div class="calendar-loading">還沒有交易紀錄,點上面「+ 新增交易」開始記錄</div>';
+    return;
+  }
+  const sorted = [...trades].sort((a,b)=> (a.date||'')<(b.date||'')?1:((a.date||'')>(b.date||'')?-1:0));
+  wrap.innerHTML = `<div class="trade-list">${sorted.map(tradeRowHTML).join('')}</div>`;
+}
+
+async function initTradeJournal(){
+  const addBtn = document.getElementById('addTradeBtn');
+  if(addBtn) addBtn.onclick = openAddTradeModal;
+
+  await ensureTradesLoaded();
+  renderTradeTable(state.trades || []);
+
+  const syncEl = document.getElementById('tradeJournalSyncNote');
+  if(syncEl){
+    syncEl.textContent = state.tradesMode==='remote'
+      ? '交易紀錄已同步到雲端,任何裝置都看得到'
+      : '目前為本機模式(尚未連接 Proxy,或雲端儲存未設定),紀錄只存在這個瀏覽器';
+  }
+}
+
+function toggleTradeFields(){
+  const type = document.getElementById('tradeType').value;
+  document.getElementById('spotFields').style.display = type==='spot' ? 'block' : 'none';
+  document.getElementById('futuresFields').style.display = type==='futures' ? 'block' : 'none';
+}
+
+function openAddTradeModal(){
+  document.getElementById('tradeDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('tradeType').value = 'spot';
+  document.getElementById('tradeIsin').value = '';
+  document.getElementById('spotSide').value = 'buy';
+  document.getElementById('spotRate').value = '';
+  document.getElementById('spotFaceValue').value = '';
+  document.getElementById('futuresContract').value = 'TU';
+  document.getElementById('futuresDirection').value = 'long';
+  document.getElementById('futuresQty').value = '';
+  document.getElementById('futuresRate').value = '';
+  toggleTradeFields();
+  document.getElementById('tradeModalBg').classList.add('open');
+}
+
+function closeTradeModal(){
+  document.getElementById('tradeModalBg').classList.remove('open');
+}
+
+document.getElementById('tradeType').addEventListener('change', toggleTradeFields);
+document.getElementById('closeTradeModalBtn').onclick = closeTradeModal;
+document.getElementById('tradeModalBg').onclick = (e)=>{
+  if(e.target.id==='tradeModalBg') closeTradeModal();
+};
+
+document.getElementById('saveTradeModalBtn').onclick = async ()=>{
+  const type = document.getElementById('tradeType').value;
+  const date = document.getElementById('tradeDate').value;
+  if(!date){ alert('請選擇交易日期'); return; }
+
+  let trade = { date, instrumentType: type };
+
+  if(type==='spot'){
+    const isin = document.getElementById('tradeIsin').value.trim();
+    const side = document.getElementById('spotSide').value;
+    const rate = parseFloat(document.getElementById('spotRate').value);
+    const faceValue = parseFloat(document.getElementById('spotFaceValue').value);
+    if(!isin){ alert('請輸入 ISIN'); return; }
+    if(Number.isNaN(rate)){ alert('請輸入利率'); return; }
+    if(Number.isNaN(faceValue)){ alert('請輸入面額'); return; }
+    trade = {...trade, isin, side, rate, faceValue};
+  }else{
+    const contract = document.getElementById('futuresContract').value;
+    const direction = document.getElementById('futuresDirection').value;
+    const quantity = parseFloat(document.getElementById('futuresQty').value);
+    const rate = parseFloat(document.getElementById('futuresRate').value);
+    if(Number.isNaN(quantity)){ alert('請輸入口數'); return; }
+    if(Number.isNaN(rate)){ alert('請輸入利率'); return; }
+    trade = {...trade, contract, direction, quantity, rate};
+  }
+
+  const btn = document.getElementById('saveTradeModalBtn');
+  const original = btn.textContent;
+  btn.textContent = '儲存中…';
+  btn.disabled = true;
+
+  const result = await addTradeRecord(trade);
+
+  btn.textContent = original;
+  btn.disabled = false;
+
+  if(!result.ok){
+    alert('儲存失敗，交易暫時沒有同步到雲端：'+result.error+'\n請確認 Proxy 網址與 Worker 部署狀態，稍後再試一次。');
+    return;
+  }
+
+  renderTradeTable(state.trades);
+  closeTradeModal();
+};
+
 async function renderSkeleton(){
   const container = document.getElementById('sections');
   let html = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
@@ -1469,6 +1770,9 @@ async function renderSkeleton(){
   if(state.activeTab==='rate_estimator'){
     html += rateEstimatorSectionHTML();
   }
+  if(state.activeTab==='trade_journal'){
+    html += tradeJournalSectionHTML();
+  }
 
   container.innerHTML = html;
 
@@ -1480,6 +1784,9 @@ async function renderSkeleton(){
   }
   if(state.activeTab==='rate_estimator'){
     initRateEstimator();
+  }
+  if(state.activeTab==='trade_journal'){
+    initTradeJournal();
   }
 }
 
