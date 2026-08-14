@@ -120,6 +120,11 @@
     font-family:'Fraunces',serif;font-size:20px;font-weight:500;color:var(--paper);margin:0;
   }
 
+  .cat-description{
+    font-size:12.5px;color:var(--text-dim);line-height:1.6;
+    margin:-8px 0 16px;max-width:640px;
+  }
+
   .grid{
     display:grid;
     grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
@@ -462,6 +467,7 @@
 
 const CATEGORIES = [
   {key:'rates', label:'公債殖利率', tab:'market'},
+  {key:'term_premium', label:'期限溢酬拆解', tab:'market', description:'把10年期殖利率拆成「Fed政策預期路徑」跟「期限溢酬」兩塊——上升是預期路徑推動還是期限溢酬推動,交易含義不一樣。'},
   {key:'inflation_expectations', label:'通膨預期', tab:'market'},
   {key:'commodities', label:'大宗商品', tab:'market'},
   {key:'inflation', label:'通膨', tab:'data'},
@@ -482,9 +488,9 @@ const METRICS = [
   {id:'dfii10',   series:'DFII10',     category:'rates', label:'10 年期抗通膨公債(TIPS)殖利率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
   {id:'t10y2y',   series:'T10Y2Y',     category:'rates', label:'10年期減2年期公債利差', unit:'pp', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
   {id:'oas_ig',   series:'BAMLC0A0CM', category:'rates', label:'投資級公司債 OAS', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
-  {id:'tp10',       series:'THREEFYTP10', category:'rates', label:'10年期期限溢酬(Term Premium)', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
-  {id:'threefy10',  series:'THREEFY10',   category:'rates', label:'10年期無風險殖利率(Kim-Wright模型)', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
-  {id:'expected_path_10y', seriesA:'THREEFY10', seriesB:'THREEFYTP10', category:'rates', label:'10年期預期短利路徑(推算)', unit:'%', kind:'series_diff', decimals:2, freq:'日', limit:30, source:'FRED', sourceLabel:'THREEFY10 − THREEFYTP10'},
+  {id:'tp10',       series:'THREEFYTP10', category:'term_premium', label:'10年期期限溢酬(Term Premium)', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+  {id:'threefy10',  series:'THREEFY10',   category:'term_premium', label:'10年期無風險殖利率(Kim-Wright模型)', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+  {id:'expected_path_10y', seriesA:'THREEFY10', seriesB:'THREEFYTP10', category:'term_premium', label:'10年期預期短利路徑(推算)', unit:'%', kind:'series_diff', decimals:2, freq:'日', limit:30, source:'FRED', sourceLabel:'THREEFY10 − THREEFYTP10'},
 
   {id:'t10yie', series:'T10YIE', category:'inflation_expectations', label:'10年期損益平衡通膨率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
   {id:'t5y5y',  series:'T5YIFR', category:'inflation_expectations', label:'5年期5年期遠期通膨預期率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
@@ -1346,6 +1352,7 @@ async function renderSkeleton(){
           <span class="cat-eyebrow">${cat.key}</span>
           <h2 class="cat-title">${cat.label}</h2>
         </div>
+        ${cat.description ? `<p class="cat-description">${cat.description}</p>` : ''}
         <div class="grid">${items.map(cardHTML).join('')}</div>
       </section>
     `;
