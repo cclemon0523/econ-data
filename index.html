@@ -1188,7 +1188,8 @@ function rateEstimatorSectionHTML(){
         <div class="estimator-detail" id="estimatorDetail"></div>
         <p class="calendar-foot-note">
           公式：合理利率 = r* + π + 0.5×(π − 通膨目標) + 0.5×產出缺口。π 用核心 PCE 年增率；
-          產出缺口以 Okun's law 近似：2×(自然失業率 − 實際失業率)，自然失業率取 CBO 對「NROU」的估計(FRED,季更)。
+          產出缺口以 Okun's law 近似：2×(自然失業率 − 實際失業率)，自然失業率取 CBO 對「NROU」的估計(FRED,季更)；
+          實際失業率採最近3個月移動平均(濾掉單月抽樣調查雜訊)。
           這是簡化版 Taylor Rule，任何單一「合理利率」數字都存在相當大的模型誤差，僅供參考方向，不是精確答案。
         </p>
       </div>
@@ -1210,7 +1211,10 @@ function rateEstimatorSectionHTML(){
           不同機構、不同模型（例如 NY Fed 的 HLW 模型）算出來的結果常常有落差，也會隨景氣循環慢慢變動，
           這正是總體經濟學界一直在爭論的題目。所以這裡刻意讓你自己拖滑桿調整，而不是幫你決定一個「正確答案」。</p>
         <p><b>產出缺口</b>：實際經濟活動跟「潛在」水準的差距，這裡用最簡化的 Okun's law（奧肯法則）近似，
-          拿失業率跟自然失業率（CBO 估計值）的差距乘以 2 來換算，只是一個粗略代理，不是精確的產出缺口衡量。</p>
+          拿失業率跟自然失業率（CBO 估計值）的差距乘以 2 來換算，只是一個粗略代理，不是精確的產出缺口衡量。
+          其中失業率採<b>最近 3 個月移動平均</b>而非單月最新值——失業率是月度抽樣調查出來的水準值，單月數字容易被
+          季節性殘留、天氣、單一企業裁員這類短期雜訊干擾，3 個月平均是 Sahm Rule 等衰退指標也採用的做法，
+          能濾掉雜訊、同時不會像更長期平均那樣反應太慢。</p>
 
         <h3>怎麼解讀算出來的結果</h3>
         <p>
@@ -1291,8 +1295,18 @@ function renderEstimator(){
   }
 
   const pi = pceResult.value;
-  const unrate = unrateResult.value;
   const nrou = estimatorState.nrou;
+
+  // 失業率改用最近3個月移動平均(利用「失業率」卡片本身已快取的近期數列,不用額外打API),
+  // 濾掉單月抽樣調查雜訊,只在資料不足3個月時退回單月數字
+  let unrate = unrateResult.value;
+  let unrateLabel = '失業率(單月,資料不足3個月)';
+  if(unrateResult.series && unrateResult.series.length>=3){
+    const last3 = unrateResult.series.slice(-3);
+    unrate = last3.reduce((a,b)=>a+b,0)/last3.length;
+    unrateLabel = '失業率(近3個月移動平均)';
+  }
+
   const outputGap = 2 * (nrou - unrate); // Okun's law 近似
   const rate = estimatorState.rStar + pi + 0.5*(pi - estimatorState.piTarget) + 0.5*outputGap;
 
@@ -1311,7 +1325,8 @@ function renderEstimator(){
   detailEl.innerHTML = `
     <div class="estimator-row"><span>核心PCE年增率 (π)</span><span>${fmtNum(pi,2)}%</span></div>
     <div class="estimator-row"><span>通膨目標</span><span>${fmtNum(estimatorState.piTarget,2)}%</span></div>
-    <div class="estimator-row"><span>失業率</span><span>${fmtNum(unrate,2)}%</span></div>
+    <div class="estimator-row"><span>失業率(最新單月,資料期間 ${unrateResult.asOf||'—'})</span><span>${fmtNum(unrateResult.value,2)}%</span></div>
+    <div class="estimator-row"><span>${unrateLabel}</span><span>${fmtNum(unrate,2)}%</span></div>
     <div class="estimator-row"><span>自然失業率估計(NROU, CBO, ${estimatorState.nrouDate})</span><span>${fmtNum(nrou,2)}%</span></div>
     <div class="estimator-row"><span>推算產出缺口</span><span>${fmtNum(outputGap,2)}%</span></div>
     <div class="estimator-row"><span>中性實質利率 r*</span><span>${estimatorState.rStar.toFixed(1)}%</span></div>
