@@ -334,6 +334,25 @@
     transition:border-color .15s,color .15s;
   }
   .trade-edit:hover{border-color:var(--brass);color:var(--brass);}
+
+  .subtab-bar{display:flex;gap:6px;}
+  .subtab-bar button{
+    font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;
+    padding:6px 14px;border:1px solid var(--panel-border);background:transparent;color:var(--text-dim);
+    cursor:pointer;border-radius:2px;transition:border-color .15s,color .15s,background .15s;
+  }
+  .subtab-bar button:hover{border-color:var(--brass);color:var(--brass);}
+  .subtab-bar button.active{background:var(--brass);border-color:var(--brass);color:var(--ink);}
+
+  .position-rate{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-dim);
+    white-space:nowrap;flex-shrink:0;
+  }
+  .position-group-label{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--brass);display:block;margin:0 0 8px;
+  }
+  .btn-sm{padding:5px 12px;font-size:12px;flex-shrink:0;}
   .modal textarea{
     width:100%;background:var(--ink);border:1px solid var(--panel-border);color:var(--text);
     padding:10px 12px;border-radius:var(--radius);font-family:'Inter',sans-serif;font-size:13px;
@@ -1556,9 +1575,21 @@ function tradeJournalSectionHTML(){
         <span class="cat-eyebrow">trade journal</span>
         <h2 class="cat-title">交易日誌</h2>
       </div>
-      <button class="btn primary" id="addTradeBtn" style="margin-bottom:10px;">+ 新增交易</button>
+
+      <div class="subtab-bar" id="journalSubtabBar">
+        <button data-subtab="records" class="active">交易紀錄</button>
+        <button data-subtab="positions">庫存部位</button>
+      </div>
+
+      <button class="btn primary" id="addTradeBtn" style="margin:14px 0 10px;">+ 新增交易</button>
       <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 14px;" id="tradeJournalSyncNote"></p>
-      <div id="tradeTableWrap"><div class="calendar-loading">載入交易紀錄中…</div></div>
+
+      <div id="journalRecordsView">
+        <div id="tradeTableWrap"><div class="calendar-loading">載入交易紀錄中…</div></div>
+      </div>
+      <div id="journalPositionsView" style="display:none;">
+        <div id="positionsWrap"><div class="calendar-loading">計算庫存部位中…</div></div>
+      </div>
     </section>
   `;
 }
@@ -1633,6 +1664,7 @@ async function deleteTrade(id){
     localStorage.setItem(tradesStorageKey(), JSON.stringify(state.trades));
   }
   renderTradeTable(state.trades);
+  renderPositionsView(state.trades);
 }
 
 function tradeRowHTML(t){
@@ -1667,12 +1699,168 @@ function renderTradeTable(trades){
   wrap.innerHTML = `<div class="trade-list">${sorted.map(tradeRowHTML).join('')}</div>`;
 }
 
+/* --- 庫存部位:用加權平均成本法把同一ISIN/合約的所有交易軋平 --- */
+
+const FUTURES_CONTRACT_LABELS = {
+  TU:'2年期公債期貨', FV:'5年期公債期貨', TY:'10年期公債期貨',
+  TN:'Ultra 10年期公債期貨', US:'30年期公債期貨',
+};
+
+function applyPositionTrade(book, key, signedQty, rate){
+  const pos = book[key] || {qty:0, avgRate:0};
+  const sameDirection = pos.qty===0 || (pos.qty>0)===(signedQty>0);
+  if(sameDirection){
+    // 同方向加碼:用加權平均更新持有均價
+    const totalAbs = Math.abs(pos.qty) + Math.abs(signedQty);
+    const totalCost = Math.abs(pos.qty)*pos.avgRate + Math.abs(signedQty)*rate;
+    pos.avgRate = totalAbs>0 ? totalCost/totalAbs : 0;
+    pos.qty = pos.qty + signedQty;
+  }else{
+    // 反方向:先軋平既有部位;若超過既有部位量,代表方向反轉,剩餘量用這筆的價格當新均價
+    const closingQty = Math.min(Math.abs(pos.qty), Math.abs(signedQty));
+    const remainder = Math.abs(signedQty) - closingQty;
+    pos.qty = pos.qty + signedQty;
+    if(remainder > 1e-9){ pos.avgRate = rate; }
+  }
+  book[key] = pos;
+}
+
+function computePositions(trades){
+  const spot = {};    // isin -> {qty(面額,正=持有), avgRate}
+  const futures = {}; // contract -> {qty(口數,正=多/負=空), avgRate}
+
+  const sorted = [...(trades||[])].sort((a,b)=>{
+    const da=a.date||'', db=b.date||'';
+    return da<db?-1:(da>db?1:0);
+  });
+
+  sorted.forEach(t=>{
+    if(t.instrumentType==='spot'){
+      if(!t.isin || !Number.isFinite(t.faceValue) || !Number.isFinite(t.rate)) return;
+      const signedQty = t.side==='buy' ? t.faceValue : -t.faceValue;
+      applyPositionTrade(spot, t.isin, signedQty, t.rate);
+    }else if(t.instrumentType==='futures'){
+      if(!t.contract || !Number.isFinite(t.quantity) || !Number.isFinite(t.rate)) return;
+      const signedQty = t.direction==='long' ? t.quantity : -t.quantity;
+      applyPositionTrade(futures, t.contract, signedQty, t.rate);
+    }
+  });
+
+  return {spot, futures};
+}
+
+function positionRowHTML(kind, key, pos){
+  const isSpot = kind==='spot';
+  const label = isSpot ? '現貨' : '期貨';
+  const sub = isSpot ? '' : (FUTURES_CONTRACT_LABELS[key] || '');
+  const isLong = pos.qty > 0;
+  const directionLabel = isSpot
+    ? (isLong ? '持有' : '空頭部位')
+    : (isLong ? '做多' : '做空');
+  const qtyLabel = isSpot
+    ? `面額 ${fmtNum(Math.abs(pos.qty),0)}`
+    : `${fmtNum(Math.abs(pos.qty),0)} 口`;
+  const closeBtnLabel = isSpot ? '賣出' : '平倉';
+  const closeAction = `openCloseTradeModal('${kind}','${key}',${pos.qty})`;
+
+  return `
+    <div class="trade-row">
+      <div class="trade-info">
+        <div class="trade-title">${key}<span class="trade-type-badge">${label}</span></div>
+        ${sub ? `<div class="trade-sub">${sub}</div>` : ''}
+      </div>
+      <div class="trade-side card-delta ${isLong?'up':'down'}">${directionLabel} · ${qtyLabel}</div>
+      <div class="position-rate">均價 ${fmtNum(pos.avgRate,3)}%</div>
+      <button class="btn btn-sm" onclick="${closeAction}">${closeBtnLabel}</button>
+    </div>
+  `;
+}
+
+function positionsHTML(positions){
+  const spotEntries = Object.entries(positions.spot).filter(([,p])=>Math.abs(p.qty)>1e-9);
+  const futuresEntries = Object.entries(positions.futures).filter(([,p])=>Math.abs(p.qty)>1e-9);
+
+  if(spotEntries.length===0 && futuresEntries.length===0){
+    return '<div class="calendar-loading">目前沒有未平倉部位</div>';
+  }
+
+  let html = '';
+  if(spotEntries.length>0){
+    html += `<span class="position-group-label">現貨部位</span><div class="trade-list" style="margin-bottom:20px;">`;
+    html += spotEntries.map(([isin,pos])=>positionRowHTML('spot', isin, pos)).join('');
+    html += `</div>`;
+  }
+  if(futuresEntries.length>0){
+    html += `<span class="position-group-label">期貨部位</span><div class="trade-list">`;
+    html += futuresEntries.map(([code,pos])=>positionRowHTML('futures', code, pos)).join('');
+    html += `</div>`;
+  }
+  return html;
+}
+
+function renderPositionsView(trades){
+  const wrap = document.getElementById('positionsWrap');
+  if(!wrap) return;
+  wrap.innerHTML = positionsHTML(computePositions(trades));
+}
+
+function switchJournalSubtab(tab){
+  document.querySelectorAll('#journalSubtabBar button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.subtab===tab);
+  });
+  const recordsEl = document.getElementById('journalRecordsView');
+  const positionsEl = document.getElementById('journalPositionsView');
+  if(recordsEl) recordsEl.style.display = tab==='records' ? 'block' : 'none';
+  if(positionsEl) positionsEl.style.display = tab==='positions' ? 'block' : 'none';
+  if(tab==='positions'){ renderPositionsView(state.trades || []); }
+}
+
+// 從庫存部位點「平倉/賣出」時,把新增交易表單預填成反方向的平倉交易(利率留空讓使用者填實際成交價)
+function openCloseTradeModal(kind, key, currentQty){
+  currentEditTradeId = null; // 這是新增一筆平倉交易,不是編輯原始交易
+  document.getElementById('tradeModalTitle').textContent = kind==='spot' ? '賣出現貨部位' : '平倉期貨部位';
+  document.getElementById('tradeDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('tradeType').value = kind;
+
+  if(kind==='spot'){
+    document.getElementById('tradeIsin').value = key;
+    document.getElementById('spotSide').value = currentQty>0 ? 'sell' : 'buy';
+    document.getElementById('spotRate').value = '';
+    document.getElementById('spotFaceValue').value = Math.abs(currentQty);
+    document.getElementById('futuresContract').value = 'TU';
+    document.getElementById('futuresDirection').value = 'long';
+    document.getElementById('futuresQty').value = '';
+    document.getElementById('futuresRate').value = '';
+  }else{
+    document.getElementById('futuresContract').value = key;
+    document.getElementById('futuresDirection').value = currentQty>0 ? 'short' : 'long';
+    document.getElementById('futuresQty').value = Math.abs(currentQty);
+    document.getElementById('futuresRate').value = '';
+    document.getElementById('tradeIsin').value = '';
+    document.getElementById('spotSide').value = 'buy';
+    document.getElementById('spotRate').value = '';
+    document.getElementById('spotFaceValue').value = '';
+  }
+  toggleTradeFields();
+  document.getElementById('tradeModalBg').classList.add('open');
+}
+
 async function initTradeJournal(){
   const addBtn = document.getElementById('addTradeBtn');
   if(addBtn) addBtn.onclick = openAddTradeModal;
 
+  const subtabBar = document.getElementById('journalSubtabBar');
+  if(subtabBar){
+    subtabBar.addEventListener('click', (e)=>{
+      const btn = e.target.closest('button[data-subtab]');
+      if(!btn) return;
+      switchJournalSubtab(btn.dataset.subtab);
+    });
+  }
+
   await ensureTradesLoaded();
   renderTradeTable(state.trades || []);
+  renderPositionsView(state.trades || []); // 預先算好,切換分頁時不用重算
 
   const syncEl = document.getElementById('tradeJournalSyncNote');
   if(syncEl){
@@ -1791,6 +1979,7 @@ document.getElementById('saveTradeModalBtn').onclick = async ()=>{
   }
 
   renderTradeTable(state.trades);
+  renderPositionsView(state.trades);
   closeTradeModal();
 };
 
