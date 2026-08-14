@@ -469,6 +469,7 @@ const CATEGORIES = [
   {key:'term_premium', label:'期限溢酬拆解', tab:'market', description:'把10年期殖利率拆成「Fed政策預期路徑」跟「期限溢酬」兩塊——上升是預期路徑推動還是期限溢酬推動,交易含義不一樣。'},
   {key:'inflation_expectations', label:'通膨預期', tab:'market', description:'市場隱含通膨預期,用公債殖利率減TIPS殖利率反推,反映市場當下對未來通膨的定價。'},
   {key:'commodities', label:'大宗商品', tab:'market'},
+  {key:'other_market', label:'其他指標', tab:'market'},
   {key:'inflation', label:'通膨', tab:'data'},
   {key:'jobs', label:'就業與薪資', tab:'data'},
   {key:'retail', label:'消費', tab:'data'},
@@ -524,6 +525,8 @@ const METRICS = [
 
   {id:'oil',   series:'DCOILWTICO',   category:'commodities', label:'WTI 原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED', intradaySymbol:'CL=F'},
   {id:'brent', series:'DCOILBRENTEU', category:'commodities', label:'布蘭特原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED', intradaySymbol:'BZ=F'},
+
+  {id:'move', symbol:'^MOVE', category:'other_market', label:'MOVE Index(公債波動率)', unit:'點', kind:'yahoo', decimals:1, freq:'近即時', source:'Yahoo Finance'},
 ];
 
 // 示範資料（尚未接上 Proxy 時顯示，數字為近似示意值，非即時)
@@ -567,6 +570,7 @@ const DEMO = {
   pce_mom:{value:0.4, prevValue:0.3},
   oil:{value:64.2, prevValue:63.1, series:[62.4,63.0,61.8,63.5,63.1,64.2]},
   brent:{value:67.8, prevValue:66.9, series:[65.9,66.6,65.2,67.0,66.9,67.8]},
+  move:{value:92.5, prevValue:95.2, series:[102.3,98.1,96.4,94.0,95.2,92.5]},
 };
 
 // ⚙ 把你的 Cloudflare Worker 網址填在這裡(記得重新上傳這個檔案),
