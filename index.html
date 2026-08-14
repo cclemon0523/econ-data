@@ -573,6 +573,7 @@ const CATEGORIES = [
   {key:'inflation_expectations', label:'通膨預期', tab:'market', description:'市場隱含通膨預期,用公債殖利率減TIPS殖利率反推,反映市場當下對未來通膨的定價。'},
   {key:'commodities', label:'大宗商品', tab:'market'},
   {key:'other_market', label:'其他指標', tab:'market'},
+  {key:'futures_oi', label:'公債期貨未平倉口數', tab:'market', description:'CFTC每週五公布(資料截至上週二),屬於監理申報資料,不是即時更新。反映市場整體參與度與部位規模的變化,常搭配殖利率走勢一起判斷市場情緒是否過熱或轉折。'},
   {key:'inflation', label:'通膨', tab:'data'},
   {key:'jobs', label:'就業與薪資', tab:'data'},
   {key:'retail', label:'消費', tab:'data'},
@@ -630,6 +631,12 @@ const METRICS = [
   {id:'brent', series:'DCOILBRENTEU', category:'commodities', label:'布蘭特原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED', intradaySymbol:'BZ=F'},
 
   {id:'move', symbol:'^MOVE', category:'other_market', label:'MOVE Index(公債波動率)', unit:'點', kind:'yahoo', decimals:1, freq:'近即時', source:'Yahoo Finance'},
+
+  {id:'oi_tu', contractCode:'TU', category:'futures_oi', label:'TU 2年期公債期貨 未平倉口數', unit:'口', kind:'cftc_oi', decimals:0, freq:'週', source:'CFTC', sourceLabel:'TFF'},
+  {id:'oi_fv', contractCode:'FV', category:'futures_oi', label:'FV 5年期公債期貨 未平倉口數', unit:'口', kind:'cftc_oi', decimals:0, freq:'週', source:'CFTC', sourceLabel:'TFF'},
+  {id:'oi_ty', contractCode:'TY', category:'futures_oi', label:'TY 10年期公債期貨 未平倉口數', unit:'口', kind:'cftc_oi', decimals:0, freq:'週', source:'CFTC', sourceLabel:'TFF'},
+  {id:'oi_tn', contractCode:'TN', category:'futures_oi', label:'TN Ultra 10年期公債期貨 未平倉口數', unit:'口', kind:'cftc_oi', decimals:0, freq:'週', source:'CFTC', sourceLabel:'TFF'},
+  {id:'oi_us', contractCode:'US', category:'futures_oi', label:'US 30年期公債期貨 未平倉口數', unit:'口', kind:'cftc_oi', decimals:0, freq:'週', source:'CFTC', sourceLabel:'TFF'},
 ];
 
 // 示範資料（尚未接上 Proxy 時顯示，數字為近似示意值，非即時)
@@ -674,6 +681,11 @@ const DEMO = {
   oil:{value:64.2, prevValue:63.1, series:[62.4,63.0,61.8,63.5,63.1,64.2]},
   brent:{value:67.8, prevValue:66.9, series:[65.9,66.6,65.2,67.0,66.9,67.8]},
   move:{value:92.5, prevValue:95.2, series:[102.3,98.1,96.4,94.0,95.2,92.5]},
+  oi_tu:{value:3820000, prevValue:3765000, series:[3690000,3720000,3705000,3750000,3765000,3820000]},
+  oi_fv:{value:5240000, prevValue:5180000, series:[5050000,5100000,5090000,5150000,5180000,5240000]},
+  oi_ty:{value:4610000, prevValue:4550000, series:[4420000,4470000,4500000,4530000,4550000,4610000]},
+  oi_tn:{value:1380000, prevValue:1355000, series:[1290000,1310000,1330000,1345000,1355000,1380000]},
+  oi_us:{value:1490000, prevValue:1470000, series:[1400000,1420000,1440000,1460000,1470000,1490000]},
 };
 
 // ⚙ 把你的 Cloudflare Worker 網址填在這裡(記得重新上傳這個檔案),
@@ -687,6 +699,7 @@ const state = {
   activeTab: 'data',
   lastResults: {},
   calendarEntries: null,
+  cftcCache: null,
 };
 
 /* ---------------- 工具函式 ---------------- */
@@ -857,6 +870,51 @@ async function fetchRba(){
   });
 }
 
+/* --- CFTC 公債期貨未平倉口數:5張卡片共用同一份原始資料,只打一次API --- */
+
+async function fetchCftcRaw(){
+  if(state.cftcCache) return state.cftcCache;
+  const rows = await fetchWithRetry(async ()=>{
+    const url = `${state.proxyUrl.replace(/\/$/,'')}/cftc?limit=300`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('CFTC proxy error '+res.status);
+    return await res.json();
+  }, 3, 800);
+  state.cftcCache = rows;
+  return rows;
+}
+
+// 用「名稱開頭比對」而非完整字串相等,對CFTC實際命名格式的細微差異比較不敏感;
+// 特別處理TY要排除ULTRA、US要排除ULTRA,避免子字串誤判(見合約說明)
+function matchCftcContract(name, code){
+  const n = (name||'').toUpperCase();
+  if(code==='TU') return n.startsWith('2-YEAR U.S. TREASURY NOTES');
+  if(code==='FV') return n.startsWith('5-YEAR U.S. TREASURY NOTES');
+  if(code==='TY') return n.startsWith('10-YEAR U.S. TREASURY NOTES') && !n.startsWith('ULTRA');
+  if(code==='TN') return n.startsWith('ULTRA 10-YEAR U.S. TREASURY NOTES');
+  if(code==='US') return n.startsWith('U.S. TREASURY BONDS') && !n.startsWith('ULTRA');
+  return false;
+}
+
+async function fetchCftcOiSeries(code){
+  const rows = await fetchCftcRaw();
+  const matched = rows.filter(r=>matchCftcContract(r.market_and_exchange_names, code));
+  if(matched.length===0){
+    throw new Error('找不到符合的CFTC合約資料(欄位或名稱格式可能與預期不同,需要人工核對)');
+  }
+  matched.sort((a,b)=>{
+    const da = a.report_date_as_yyyy_mm_dd||'', db = b.report_date_as_yyyy_mm_dd||'';
+    return da<db?-1:(da>db?1:0);
+  });
+  const out = matched
+    .map(r=>({date:(r.report_date_as_yyyy_mm_dd||'').slice(0,10), value:parseFloat(r.open_interest_all)}))
+    .filter(o=>!Number.isNaN(o.value));
+  if(out.length===0){
+    throw new Error('抓到合約資料,但open_interest_all欄位無法解析(欄位名稱可能與預期不同)');
+  }
+  return out;
+}
+
 async function loadMetric(m){
   if(state.forceDemo || !state.proxyUrl){
     return {ok:true, demo:true, ...DEMO[m.id]};
@@ -873,6 +931,14 @@ async function loadMetric(m){
     }
     if(m.kind==='rba'){
       const series = await fetchRba();
+      if(series.length===0) throw new Error('no data');
+      const value = series[series.length-1].value;
+      const prevValue = series.length>1 ? series[series.length-2].value : null;
+      const asOf = series[series.length-1].date;
+      return {ok:true, demo:false, value, prevValue, series:series.slice(-24).map(o=>o.value), asOf};
+    }
+    if(m.kind==='cftc_oi'){
+      const series = await fetchCftcOiSeries(m.contractCode);
       if(series.length===0) throw new Error('no data');
       const value = series[series.length-1].value;
       const prevValue = series.length>1 ? series[series.length-2].value : null;
@@ -2005,6 +2071,9 @@ async function computeDetailSeries(m){
   }
   if(m.kind==='rba'){
     return await fetchRba(); // CSV本身就是完整歷史,已由舊到新排序
+  }
+  if(m.kind==='cftc_oi'){
+    return await fetchCftcOiSeries(m.contractCode); // 已由舊到新排序
   }
   if(m.kind==='series_diff'){
     const rawLimit = historyRawLimit(m);
