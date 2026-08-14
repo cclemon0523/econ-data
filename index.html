@@ -939,7 +939,17 @@ const CALENDAR_RELEASES = [
   {id:'jolts',       name:'JOLTS (Job Openings & Labor Turnover)', releaseId:192},
   {id:'eci',         name:'Employment Cost Index (ECI)', releaseId:11},
   {id:'gdp',         name:'Gross Domestic Product (GDP)', releaseId:53},
-  {id:'fomc',        name:'FOMC Rate Decision', releaseId:101},
+];
+
+// FOMC 決議日期改用聯準會官方公布的固定行事曆(寫死),不透過 FRED release API。
+// 原因：FRED 的 release_id=101「FOMC Press Release」底下追蹤的其實是 DFEDTARU 這類
+// 「每天都會更新一筆」的每日利率數列,release/dates 回傳的是全年365天,不是真正的8次會議日。
+// 來源：federalreserve.gov 2026年正式公布的會議時程(2024年8月公布,2026整年已固定)。
+// 日期為每次兩天會議的第二天(決議聲明公布日)。若要更新到2027年,聯準會通常會在
+// 前一年年中(約7-8月)公布下一年度時程,屆時需要手動更新這個陣列。
+const FOMC_MEETING_DATES = [
+  '2026-01-28','2026-03-18','2026-04-29','2026-06-17',
+  '2026-07-29','2026-09-16','2026-10-28','2026-12-09',
 ];
 
 async function fetchReleaseDates(releaseId){
@@ -1023,7 +1033,12 @@ async function loadCalendar(){
     const demoEntries = CALENDAR_RELEASES.map((r,i)=>{
       const d = new Date(today); d.setDate(d.getDate() + (i+1)*3);
       return {...r, date: d.toISOString().slice(0,10)};
-    }).sort((a,b)=> a.date<b.date?-1:1);
+    });
+    const todayStrDemo = today.toISOString().slice(0,10);
+    FOMC_MEETING_DATES.filter(d=>d>=todayStrDemo).slice(0,2).forEach(date=>{
+      demoEntries.push({id:'fomc', name:'FOMC Rate Decision', date});
+    });
+    demoEntries.sort((a,b)=> a.date<b.date?-1:1);
     renderCalendarList(demoEntries, true);
     return;
   }
@@ -1036,6 +1051,11 @@ async function loadCalendar(){
   const todayStr = new Date().toISOString().slice(0,10);
   const entries = [];
 
+  // FOMC 用寫死的官方行事曆,不透過 FRED release API(見上方 FOMC_MEETING_DATES 註解說明原因)
+  FOMC_MEETING_DATES.filter(d=>d>=todayStr).slice(0,2).forEach(date=>{
+    entries.push({id:'fomc', name:'FOMC Rate Decision', date});
+  });
+
   await Promise.all(CALENDAR_RELEASES.map(async (r, idx)=>{
     await sleep(idx*80);
     try{
@@ -1044,7 +1064,7 @@ async function loadCalendar(){
       if(upcoming.length===0){
         entries.push({...r, date:null});
       }else{
-        // 顯示未來兩次日期(而不是只顯示最近一次),避免像FOMC這種較低頻率的
+        // 顯示未來兩次日期(而不是只顯示最近一次),避免像低頻率的
         // 排程漏掉下下次的日期
         upcoming.slice(0,2).forEach(date=>{
           entries.push({...r, date});
