@@ -1041,7 +1041,15 @@ async function loadCalendar(){
     try{
       const dates = await fetchReleaseDates(r.releaseId);
       const upcoming = dates.filter(d=>d>=todayStr).sort();
-      entries.push({...r, date: upcoming.length>0 ? upcoming[0] : null});
+      if(upcoming.length===0){
+        entries.push({...r, date:null});
+      }else{
+        // 顯示未來兩次日期(而不是只顯示最近一次),避免像FOMC這種較低頻率的
+        // 排程漏掉下下次的日期
+        upcoming.slice(0,2).forEach(date=>{
+          entries.push({...r, date});
+        });
+      }
     }catch(e){
       entries.push({...r, date:null, error:e.message});
     }
