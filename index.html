@@ -468,7 +468,7 @@
 const CATEGORIES = [
   {key:'rates', label:'公債殖利率', tab:'market'},
   {key:'term_premium', label:'期限溢酬拆解', tab:'market', description:'把10年期殖利率拆成「Fed政策預期路徑」跟「期限溢酬」兩塊——上升是預期路徑推動還是期限溢酬推動,交易含義不一樣。'},
-  {key:'inflation_expectations', label:'通膨預期', tab:'market'},
+  {key:'inflation_expectations', label:'通膨預期', tab:'market', description:'市場隱含通膨預期,用公債殖利率減TIPS殖利率反推,反映市場當下對未來通膨的定價。'},
   {key:'commodities', label:'大宗商品', tab:'market'},
   {key:'inflation', label:'通膨', tab:'data'},
   {key:'jobs', label:'就業與薪資', tab:'data'},
@@ -1200,6 +1200,33 @@ function rateEstimatorSectionHTML(){
         </p>
       </div>
 
+      <div class="estimator-card" style="margin-top:18px;">
+        <div class="cat-head" style="border-bottom:none;padding-bottom:0;margin-bottom:14px;">
+          <span class="cat-eyebrow">expectations hypothesis + term premium</span>
+          <h2 class="cat-title" style="font-size:17px;">10年期公債殖利率估算</h2>
+        </div>
+        <div class="estimator-inputs">
+          <div class="estimator-field">
+            <label>政策利率回歸中性利率所需年數<span class="estimator-field-value" id="reversionValue">3 年</span></label>
+            <input type="range" id="reversionSlider" min="1" max="8" step="1" value="3">
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--text-dim);margin:-8px 0 16px;">
+          長期中性政策利率沿用上方設定的 r* + 通膨目標，不用重複調整。
+        </p>
+        <div class="estimator-result" id="tenYearResult">
+          <div class="calendar-loading">計算中…</div>
+        </div>
+        <div class="estimator-detail" id="tenYearDetail"></div>
+        <p class="calendar-foot-note">
+          方法（對應「泰勒法則延伸 + 預期假說 + 期限溢酬」這條路徑）：假設政策利率從目前實際 Fed Funds Rate，
+          用線性過渡的方式在設定的年數內回到長期中性利率（r* + 通膨目標），之後10年剩餘時間維持在中性利率，
+          取這條路徑未來10年的平均值，代表「市場預期的未來平均短利路徑」；再加上目前市場實際的10年期期限溢酬
+          （取自上方「期限溢酬拆解」區塊的即時數據），得到模型估算的10年期殖利率，跟目前市場實際殖利率相比對。
+          過渡年數沒有唯一正確答案，建議多試幾種年數，看估算值對這個假設的敏感度有多大。
+        </p>
+      </div>
+
       <div class="estimator-explainer">
         <h3>什麼是 Taylor Rule？</h3>
         <p>
@@ -1257,6 +1284,8 @@ async function initRateEstimator(){
   }
   wireEstimatorInputs();
   renderEstimator();
+  wireTenYearEstimatorInput();
+  renderTenYearEstimator();
 }
 
 function wireEstimatorInputs(){
@@ -1272,11 +1301,13 @@ function wireEstimatorInputs(){
     estimatorState.rStar = parseFloat(rStarEl.value);
     document.getElementById('rStarValue').textContent = estimatorState.rStar.toFixed(1)+'%';
     renderEstimator();
+    renderTenYearEstimator(); // r*是共用參數,一併重算10年期模型
   });
   piTargetEl.addEventListener('input', ()=>{
     estimatorState.piTarget = parseFloat(piTargetEl.value);
     document.getElementById('piTargetValue').textContent = estimatorState.piTarget.toFixed(1)+'%';
     renderEstimator();
+    renderTenYearEstimator(); // 通膨目標是共用參數,一併重算10年期模型
   });
 }
 
@@ -1338,6 +1369,73 @@ function renderEstimator(){
     <div class="estimator-row"><span>中性實質利率 r*</span><span>${estimatorState.rStar.toFixed(1)}%</span></div>
     <div class="estimator-row estimator-row-highlight"><span>目前 Fed Funds Rate</span><span>${fedfundsText}</span></div>
     <div class="estimator-row estimator-row-highlight"><span>與目前利率差距</span><span>${diffText}</span></div>
+  `;
+}
+
+/* ---------------- 10年期公債殖利率估算(預期假說 + 期限溢酬) ---------------- */
+
+const tenYearEstimatorState = { reversionYears: 3 };
+
+function wireTenYearEstimatorInput(){
+  const el = document.getElementById('reversionSlider');
+  if(!el) return;
+  el.value = tenYearEstimatorState.reversionYears;
+  document.getElementById('reversionValue').textContent = tenYearEstimatorState.reversionYears+' 年';
+  el.addEventListener('input', ()=>{
+    tenYearEstimatorState.reversionYears = parseInt(el.value, 10);
+    document.getElementById('reversionValue').textContent = tenYearEstimatorState.reversionYears+' 年';
+    renderTenYearEstimator();
+  });
+}
+
+function renderTenYearEstimator(){
+  const resultEl = document.getElementById('tenYearResult');
+  const detailEl = document.getElementById('tenYearDetail');
+  if(!resultEl) return;
+
+  const fedfundsResult = state.lastResults['fedfunds'];
+  const tpResult = state.lastResults['tp10'];
+  const dgs10Result = state.lastResults['dgs10'];
+
+  if(!fedfundsResult || !fedfundsResult.ok || !tpResult || !tpResult.ok){
+    resultEl.innerHTML = '<div class="calendar-loading">需要 Fed Funds Rate 與10年期期限溢酬資料載入完成(回市場價格分頁看一下再回來)</div>';
+    detailEl.innerHTML = '';
+    return;
+  }
+
+  const HORIZON = 10;
+  const neutralRate = estimatorState.rStar + estimatorState.piTarget; // 長期中性政策利率
+  const currentFedFunds = fedfundsResult.value;
+  const reversionYears = Math.min(tenYearEstimatorState.reversionYears, HORIZON);
+  const flatYears = HORIZON - reversionYears;
+
+  // 過渡段(線性從目前利率走到中性利率)的平均值,就是頭尾兩點的平均值
+  const transitionAvg = (currentFedFunds + neutralRate) / 2;
+  const pathAverage = (transitionAvg*reversionYears + neutralRate*flatYears) / HORIZON;
+
+  const termPremium = tpResult.value;
+  const fairYield = pathAverage + termPremium;
+
+  resultEl.innerHTML = `
+    <div class="estimator-big">${fmtNum(fairYield,2)}%</div>
+    <div class="estimator-label">模型估算的10年期公債殖利率</div>
+  `;
+
+  const actualText = (dgs10Result && dgs10Result.ok)
+    ? `${fmtNum(dgs10Result.value,2)}%（近即時,Yahoo Finance）`
+    : '資料暫不可用';
+  const diffText = (dgs10Result && dgs10Result.ok)
+    ? `模型估算值${fairYield>dgs10Result.value?'高於':'低於'}目前市場實際殖利率 ${fmtNum(Math.abs(fairYield-dgs10Result.value),2)} 個百分點`
+    : '—';
+
+  detailEl.innerHTML = `
+    <div class="estimator-row"><span>目前 Fed Funds Rate(目標區間上限)</span><span>${fmtNum(currentFedFunds,2)}%</span></div>
+    <div class="estimator-row"><span>長期中性政策利率(r* + 通膨目標)</span><span>${fmtNum(neutralRate,2)}%</span></div>
+    <div class="estimator-row"><span>回歸中性利率所需年數</span><span>${reversionYears} 年</span></div>
+    <div class="estimator-row"><span>推算未來10年平均短利路徑</span><span>${fmtNum(pathAverage,2)}%</span></div>
+    <div class="estimator-row"><span>目前10年期期限溢酬(Term Premium,資料期間 ${tpResult.asOf||'—'})</span><span>${fmtNum(termPremium,2)}%</span></div>
+    <div class="estimator-row estimator-row-highlight"><span>目前市場實際10年期殖利率</span><span>${actualText}</span></div>
+    <div class="estimator-row estimator-row-highlight"><span>與市場實際殖利率差距</span><span>${diffText}</span></div>
   `;
 }
 
