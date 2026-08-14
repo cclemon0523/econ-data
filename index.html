@@ -953,13 +953,14 @@ const FOMC_MEETING_DATES = [
 ];
 
 async function fetchReleaseDates(releaseId){
+  // 針對429限流問題,加大重試次數與等待時間(4次重試,間隔逐漸拉長到1.2s/2.4s/3.6s/4.8s)
   return fetchWithRetry(async ()=>{
     const url = `${state.proxyUrl.replace(/\/$/,'')}/fred-release?release_id=${releaseId}&limit=15`;
     const res = await fetch(url);
     if(!res.ok) throw new Error('release proxy error '+res.status);
     const json = await res.json();
     return (json.release_dates || []).map(d=>d.date);
-  });
+  }, 4, 1200);
 }
 
 function calendarSectionHTML(){
@@ -1057,7 +1058,7 @@ async function loadCalendar(){
   });
 
   await Promise.all(CALENDAR_RELEASES.map(async (r, idx)=>{
-    await sleep(idx*80);
+    await sleep(idx*250);
     try{
       const dates = await fetchReleaseDates(r.releaseId);
       const upcoming = dates.filter(d=>d>=todayStr).sort();
