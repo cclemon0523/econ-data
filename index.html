@@ -197,6 +197,30 @@
   }
   .member-card.tone-dove:hover{border-color:var(--up);}
 
+  /* Economic calendar */
+  .calendar-list{display:flex;flex-direction:column;gap:1px;background:var(--panel-border);border:1px solid var(--panel-border);border-radius:2px;overflow:hidden;}
+  .calendar-row{
+    display:flex;align-items:center;gap:16px;
+    background:var(--panel);padding:12px 16px;
+  }
+  .calendar-date{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    width:56px;flex-shrink:0;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .calendar-md{font-size:16px;font-weight:600;color:var(--brass);}
+  .calendar-wd{font-size:10px;color:var(--text-dim);margin-top:1px;}
+  .calendar-date-error{font-size:18px;color:var(--text-dim);}
+  .calendar-info{flex:1;min-width:0;}
+  .calendar-name{font-size:13.5px;color:var(--paper);}
+  .calendar-sub{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);margin-top:2px;}
+  .calendar-countdown{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--brass);
+    white-space:nowrap;flex-shrink:0;
+  }
+  .calendar-loading{padding:16px;color:var(--text-dim);font-size:13px;text-align:center;}
+  .calendar-foot-note{font-size:11.5px;color:var(--text-dim);margin-top:10px;}
+
   /* Modal */
   .modal-bg{
     position:fixed;inset:0;background:rgba(5,7,10,0.7);
@@ -313,6 +337,7 @@
     <button data-tab="data" class="active">經濟數據</button>
     <button data-tab="market">市場價格</button>
     <button data-tab="central_bank">央行專區</button>
+    <button data-tab="economic_calendar">經濟日曆</button>
   </div>
 </div>
 
@@ -434,6 +459,8 @@ const METRICS = [
   {id:'ccsa',      series:'CCSA',          category:'jobs', label:'續領失業救濟金人數', unit:'人', kind:'level', decimals:0, freq:'週', limit:26, source:'FRED'},
   {id:'wage',      series:'CES0500000003', category:'jobs', label:'平均時薪年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
   {id:'dspic_yoy', series:'DSPIC96',       category:'jobs', label:'實質可支配所得年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
+  {id:'jolts_openings', series:'JTSJOL', category:'jobs', label:'JOLTS 職缺數', unit:'千人', kind:'level', decimals:0, freq:'月', limit:24, source:'FRED'},
+  {id:'jolts_quits',    series:'JTSQUR', category:'jobs', label:'JOLTS 離職率', unit:'%', kind:'level', decimals:1, freq:'月', limit:24, source:'FRED'},
 
   {id:'retail_yoy', series:'RSAFS', category:'retail', label:'零售銷售年增率', unit:'%', kind:'yoy', decimals:1, freq:'月', limit:26, source:'FRED'},
   {id:'retail_mom', series:'RSAFS', category:'retail', label:'零售銷售月增率', unit:'%', kind:'mom', decimals:1, freq:'月', limit:26, source:'FRED'},
@@ -474,6 +501,8 @@ const DEMO = {
   ccsa:{value:1870000, prevValue:1855000, series:[1830000,1842000,1850000,1861000,1855000,1870000]},
   wage:{value:3.9, prevValue:4.0},
   dspic_yoy:{value:1.6, prevValue:1.8},
+  jolts_openings:{value:7400, prevValue:7550, series:[7800,7650,7700,7600,7550,7400]},
+  jolts_quits:{value:2.0, prevValue:2.0, series:[2.1,2.1,2.0,2.0,2.0,2.0]},
   retail_yoy:{value:3.1, prevValue:2.8},
   retail_mom:{value:0.4, prevValue:0.1},
   pce_yoy:{value:5.2, prevValue:5.0},
@@ -492,6 +521,7 @@ const state = {
   forceDemo: localStorage.getItem('econdash_demo') === '1',
   activeTab: 'data',
   lastResults: {},
+  calendarEntries: null,
 };
 
 /* ---------------- 工具函式 ---------------- */
@@ -898,6 +928,136 @@ function closeNoteModal(){
 
 /* ---------------- 渲染 ---------------- */
 
+/* ---------------- 經濟日曆(FRED 官方發布時程) ---------------- */
+
+const CALENDAR_RELEASES = [
+  {id:'employment', name:'就業報告(非農/失業率)', releaseId:50},
+  {id:'cpi',         name:'CPI 消費者物價指數',    releaseId:10},
+  {id:'ppi',         name:'PPI 生產者物價指數',    releaseId:46},
+  {id:'pce',         name:'PCE 個人所得與支出',    releaseId:54},
+  {id:'retail',      name:'零售銷售',              releaseId:9},
+  {id:'jolts',       name:'JOLTS 職缺與離職率',    releaseId:192},
+  {id:'eci',         name:'就業成本指數(ECI)',      releaseId:11},
+  {id:'gdp',         name:'GDP 國內生產毛額',       releaseId:53},
+  {id:'fomc',        name:'FOMC 利率決議',          releaseId:101},
+];
+
+async function fetchReleaseDates(releaseId){
+  return fetchWithRetry(async ()=>{
+    const url = `${state.proxyUrl.replace(/\/$/,'')}/fred-release?release_id=${releaseId}&limit=15`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('release proxy error '+res.status);
+    const json = await res.json();
+    return (json.release_dates || []).map(d=>d.date);
+  });
+}
+
+function calendarSectionHTML(){
+  return `
+    <section class="category">
+      <div class="cat-head">
+        <span class="cat-eyebrow">calendar</span>
+        <h2 class="cat-title">重要經濟數據公布日期</h2>
+      </div>
+      <div id="calendarList" class="calendar-list">
+        <div class="calendar-loading">載入公布日期中…</div>
+      </div>
+      <p class="calendar-foot-note">資料來源：FRED Release Calendar（彙整自 BLS、BEA、Federal Reserve 官方公布時程；依 FRED 更新頻率,可能會有一兩天延遲）</p>
+    </section>
+  `;
+}
+
+function daysUntil(dateStr){
+  const target = new Date(dateStr+'T00:00:00');
+  const today = new Date(); today.setHours(0,0,0,0);
+  return Math.round((target-today)/(1000*60*60*24));
+}
+
+function renderCalendarList(entries, isDemo){
+  const listEl = document.getElementById('calendarList');
+  if(!listEl) return;
+
+  if(entries.length===0){
+    listEl.innerHTML = '<div class="calendar-loading">目前沒有找到即將公布的日期</div>';
+    return;
+  }
+
+  const rows = entries.map(e=>{
+    if(!e.date){
+      return `
+        <div class="calendar-row">
+          <div class="calendar-date"><span class="calendar-date-error">—</span></div>
+          <div class="calendar-info">
+            <div class="calendar-name">${e.name}</div>
+            <div class="calendar-sub">日期載入失敗${e.error?'：'+e.error:''}</div>
+          </div>
+        </div>
+      `;
+    }
+    const d = new Date(e.date+'T00:00:00');
+    const md = `${d.getMonth()+1}/${d.getDate()}`;
+    const weekday = ['週日','週一','週二','週三','週四','週五','週六'][d.getDay()];
+    const diff = daysUntil(e.date);
+    const diffLabel = diff===0 ? '今天' : (diff===1 ? '明天' : (diff>0 ? `${diff} 天後` : `${Math.abs(diff)} 天前`));
+    return `
+      <div class="calendar-row">
+        <div class="calendar-date"><span class="calendar-md">${md}</span><span class="calendar-wd">${weekday}</span></div>
+        <div class="calendar-info">
+          <div class="calendar-name">${e.name}</div>
+          <div class="calendar-sub">${e.date}</div>
+        </div>
+        <div class="calendar-countdown">${diffLabel}</div>
+      </div>
+    `;
+  }).join('');
+
+  listEl.innerHTML = (isDemo ? '<div class="calendar-loading">示範資料，設定 Proxy 後會顯示 FRED 官方公布時程</div>' : '') + rows;
+}
+
+async function loadCalendar(){
+  const listEl = document.getElementById('calendarList');
+  if(!listEl) return;
+
+  if(state.forceDemo || !state.proxyUrl){
+    const today = new Date();
+    const demoEntries = CALENDAR_RELEASES.map((r,i)=>{
+      const d = new Date(today); d.setDate(d.getDate() + (i+1)*3);
+      return {...r, date: d.toISOString().slice(0,10)};
+    }).sort((a,b)=> a.date<b.date?-1:1);
+    renderCalendarList(demoEntries, true);
+    return;
+  }
+
+  if(state.calendarEntries){
+    renderCalendarList(state.calendarEntries, false);
+    return;
+  }
+
+  const todayStr = new Date().toISOString().slice(0,10);
+  const entries = [];
+
+  await Promise.all(CALENDAR_RELEASES.map(async (r, idx)=>{
+    await sleep(idx*80);
+    try{
+      const dates = await fetchReleaseDates(r.releaseId);
+      const upcoming = dates.filter(d=>d>=todayStr).sort();
+      entries.push({...r, date: upcoming.length>0 ? upcoming[0] : null});
+    }catch(e){
+      entries.push({...r, date:null, error:e.message});
+    }
+  }));
+
+  entries.sort((a,b)=>{
+    if(!a.date && !b.date) return 0;
+    if(!a.date) return 1;
+    if(!b.date) return -1;
+    return a.date<b.date?-1:(a.date>b.date?1:0);
+  });
+
+  state.calendarEntries = entries;
+  renderCalendarList(entries, false);
+}
+
 async function renderSkeleton(){
   const container = document.getElementById('sections');
   let html = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
@@ -918,11 +1078,17 @@ async function renderSkeleton(){
     await ensureNotesLoaded();
     html += fomcSectionHTML();
   }
+  if(state.activeTab==='economic_calendar'){
+    html += calendarSectionHTML();
+  }
 
   container.innerHTML = html;
 
   if(state.activeTab==='central_bank'){
     renderAllMemberNotePreviews();
+  }
+  if(state.activeTab==='economic_calendar'){
+    loadCalendar(); // 非同步載入,不擋住畫面渲染
   }
 }
 
@@ -1016,7 +1182,10 @@ function closeModal(){ modalBg.classList.remove('open'); }
 document.getElementById('settingsBtn').onclick = openModal;
 document.getElementById('bannerSettingsBtn').onclick = openModal;
 document.getElementById('closeModalBtn').onclick = closeModal;
-document.getElementById('refreshBtn').onclick = loadAll;
+document.getElementById('refreshBtn').onclick = ()=>{
+  state.calendarEntries = null;
+  loadAll();
+};
 modalBg.onclick = (e)=>{ if(e.target===modalBg) closeModal(); };
 
 document.getElementById('saveModalBtn').onclick = ()=>{
