@@ -221,6 +221,52 @@
   .calendar-loading{padding:16px;color:var(--text-dim);font-size:13px;text-align:center;}
   .calendar-foot-note{font-size:11.5px;color:var(--text-dim);margin-top:10px;}
 
+  /* Rate estimator */
+  .estimator-card{
+    background:var(--panel);border:1px solid var(--panel-border);border-top:2px solid var(--brass-dim);
+    border-radius:2px;padding:22px 24px;
+  }
+  .estimator-inputs{display:flex;flex-wrap:wrap;gap:28px;margin-bottom:20px;}
+  .estimator-field{flex:1;min-width:220px;}
+  .estimator-field label{
+    display:block;font-size:12px;color:var(--text-dim);margin-bottom:8px;line-height:1.5;
+  }
+  .estimator-field input[type=range]{
+    width:100%;accent-color:var(--brass);
+  }
+  .estimator-field .estimator-field-value{
+    font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--brass);font-weight:600;margin-left:8px;
+  }
+  .estimator-result{
+    text-align:center;padding:20px 0;border-top:1px solid var(--panel-border);border-bottom:1px solid var(--panel-border);
+    margin-bottom:16px;
+  }
+  .estimator-big{font-family:'IBM Plex Mono',monospace;font-size:38px;font-weight:600;color:var(--paper);}
+  .estimator-label{font-size:12px;color:var(--text-dim);margin-top:4px;letter-spacing:.04em;}
+  .estimator-detail{display:flex;flex-direction:column;gap:8px;}
+  .estimator-row{
+    display:flex;justify-content:space-between;font-size:13px;color:var(--text);
+    padding:6px 0;border-bottom:1px dashed var(--panel-border);
+  }
+  .estimator-row span:last-child{font-family:'IBM Plex Mono',monospace;color:var(--text-dim);}
+  .estimator-row-highlight{border-bottom:none;padding-top:10px;margin-top:4px;border-top:1px solid var(--panel-border);}
+  .estimator-row-highlight span:last-child{color:var(--brass);font-weight:600;}
+
+  .estimator-explainer{
+    margin-top:16px;
+    background:var(--panel);border:1px solid var(--panel-border);border-radius:2px;
+    padding:22px 24px;
+  }
+  .estimator-explainer h3{
+    font-family:'Fraunces',serif;font-weight:500;font-size:16px;color:var(--paper);
+    margin:20px 0 8px;
+  }
+  .estimator-explainer h3:first-child{margin-top:0;}
+  .estimator-explainer p{
+    font-size:13px;line-height:1.75;color:var(--text-dim);margin:0 0 4px;
+  }
+  .estimator-explainer p b{color:var(--text);font-weight:600;}
+
   /* Modal */
   .modal-bg{
     position:fixed;inset:0;background:rgba(5,7,10,0.7);
@@ -338,6 +384,7 @@
     <button data-tab="market">市場價格</button>
     <button data-tab="central_bank">央行專區</button>
     <button data-tab="economic_calendar">經濟日曆</button>
+    <button data-tab="rate_estimator">利率估算</button>
   </div>
 </div>
 
@@ -435,6 +482,9 @@ const METRICS = [
   {id:'dfii10',   series:'DFII10',     category:'rates', label:'10 年期抗通膨公債(TIPS)殖利率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
   {id:'t10y2y',   series:'T10Y2Y',     category:'rates', label:'10年期減2年期公債利差', unit:'pp', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
   {id:'oas_ig',   series:'BAMLC0A0CM', category:'rates', label:'投資級公司債 OAS', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+  {id:'tp10',       series:'THREEFYTP10', category:'rates', label:'10年期期限溢酬(Term Premium)', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+  {id:'threefy10',  series:'THREEFY10',   category:'rates', label:'10年期無風險殖利率(Kim-Wright模型)', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
+  {id:'expected_path_10y', seriesA:'THREEFY10', seriesB:'THREEFYTP10', category:'rates', label:'10年期預期短利路徑(推算)', unit:'%', kind:'series_diff', decimals:2, freq:'日', limit:30, source:'FRED', sourceLabel:'THREEFY10 − THREEFYTP10'},
 
   {id:'t10yie', series:'T10YIE', category:'inflation_expectations', label:'10年期損益平衡通膨率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
   {id:'t5y5y',  series:'T5YIFR', category:'inflation_expectations', label:'5年期5年期遠期通膨預期率', unit:'%', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED'},
@@ -481,6 +531,9 @@ const DEMO = {
   dfii10:{value:1.98, prevValue:2.01, series:[2.05,2.03,2.01,1.99,2.01,1.98]},
   t10y2y:{value:0.52, prevValue:0.48, series:[0.40,0.44,0.46,0.49,0.48,0.52]},
   oas_ig:{value:0.92, prevValue:0.95, series:[1.02,0.98,0.96,0.94,0.95,0.92]},
+  tp10:{value:0.55, prevValue:0.51, series:[0.42,0.46,0.49,0.52,0.51,0.55]},
+  threefy10:{value:4.25, prevValue:4.28, series:[4.28,4.26,4.20,4.16,4.28,4.25]},
+  expected_path_10y:{value:3.70, prevValue:3.77, series:[3.86,3.80,3.71,3.64,3.77,3.70]},
   t10yie:{value:2.31, prevValue:2.28, series:[2.22,2.25,2.27,2.29,2.28,2.31]},
   t5y5y:{value:2.24, prevValue:2.22, series:[2.18,2.20,2.21,2.23,2.22,2.24]},
   fedfunds:{value:4.50, prevValue:4.50, series:[4.50,4.50,4.75,5.00,5.25,5.50]},
@@ -569,6 +622,13 @@ function addMonths(dateStr, delta){
 function buildMonthMap(obs){
   const map = new Map();
   obs.forEach(o=> map.set(monthKey(o.date), o));
+  return map;
+}
+
+// 以完整日期(而非月份)比對,適用於日頻資料的兩數列相減(例如 term premium 拆解)
+function buildDateMap(obs){
+  const map = new Map();
+  obs.forEach(o=> map.set(o.date, o));
   return map;
 }
 
@@ -706,6 +766,19 @@ async function loadMetric(m){
       const prevValue = series.length>1 ? series[series.length-2].value : null;
       const asOf = series[series.length-1].date;
       return {ok:true, demo:false, value, prevValue, series:series.slice(-24).map(o=>o.value), asOf};
+    }
+    if(m.kind==='series_diff'){
+      const [obsA, obsB] = await Promise.all([
+        fetchFred(m.seriesA, m.limit),
+        fetchFred(m.seriesB, m.limit),
+      ]);
+      const mapB = buildDateMap(obsB);
+      const common = obsA.filter(o=>mapB.has(o.date)).map(o=>({date:o.date, value:o.value-mapB.get(o.date).value}));
+      if(common.length===0) throw new Error('no overlapping dates between series');
+      const value = common[common.length-1].value;
+      const prevValue = common.length>1 ? common[common.length-2].value : null;
+      const asOf = common[common.length-1].date;
+      return {ok:true, demo:false, value, prevValue, series:common.slice(-24).map(o=>o.value), asOf};
     }
     const obs = await fetchFred(m.series, m.limit);
     if(obs.length===0) throw new Error('no data');
@@ -1087,6 +1160,166 @@ async function loadCalendar(){
   renderCalendarList(entries, false);
 }
 
+/* ---------------- 利率估算(Taylor Rule) ---------------- */
+
+const estimatorState = { rStar: 1.0, piTarget: 2.0, nrou: null, nrouDate: null, nrouError: null };
+
+function rateEstimatorSectionHTML(){
+  return `
+    <section class="category">
+      <div class="cat-head">
+        <span class="cat-eyebrow">taylor rule</span>
+        <h2 class="cat-title">Fed Funds 合理利率估算</h2>
+      </div>
+      <div class="estimator-card">
+        <div class="estimator-inputs">
+          <div class="estimator-field">
+            <label>中性實質利率 r*（沒有單一公認正確值,可自行依市場共識調整）<span class="estimator-field-value" id="rStarValue">1.0%</span></label>
+            <input type="range" id="rStarSlider" min="-1" max="2" step="0.1" value="1.0">
+          </div>
+          <div class="estimator-field">
+            <label>Fed 通膨目標<span class="estimator-field-value" id="piTargetValue">2.0%</span></label>
+            <input type="range" id="piTargetSlider" min="1" max="3" step="0.1" value="2.0">
+          </div>
+        </div>
+        <div class="estimator-result" id="estimatorResult">
+          <div class="calendar-loading">計算中…</div>
+        </div>
+        <div class="estimator-detail" id="estimatorDetail"></div>
+        <p class="calendar-foot-note">
+          公式：合理利率 = r* + π + 0.5×(π − 通膨目標) + 0.5×產出缺口。π 用核心 PCE 年增率；
+          產出缺口以 Okun's law 近似：2×(自然失業率 − 實際失業率)，自然失業率取 CBO 對「NROU」的估計(FRED,季更)。
+          這是簡化版 Taylor Rule，任何單一「合理利率」數字都存在相當大的模型誤差，僅供參考方向，不是精確答案。
+        </p>
+      </div>
+
+      <div class="estimator-explainer">
+        <h3>什麼是 Taylor Rule？</h3>
+        <p>
+          泰勒法則是史丹佛大學經濟學家 John Taylor 在 1993 年提出的公式，用來估算央行「大致合理」的政策利率，
+          目的是同時穩住通膨和經濟成長。核心邏輯很直覺：<b>通膨愈高於目標、或經濟愈熱（失業率愈低於自然失業率），
+          利率就該愈高來降溫；反之則該愈低來刺激。</b>它不是 Fed 內部真的照這條公式決策，而是市場與學界拿來
+          檢視「目前利率相對模型建議是偏緊還是偏鬆」的一個參考尺。
+        </p>
+
+        <h3>各個參數在算什麼</h3>
+        <p><b>π（核心 PCE 年增率）</b>：Fed 官方最看重的通膨指標，排除食品與能源價格的短期波動，比 CPI 更貼近
+          Fed 決策時實際參考的數字。</p>
+        <p><b>通膨目標</b>：Fed 長期設定為 2%，這是唯一比較沒有爭議的參數，滑桿開放調整只是方便你做情境測試。</p>
+        <p><b>中性實質利率 r*</b>：經濟「不熱不冷」時所需要的實質利率水準。這個數字<b>沒辦法直接觀測，只能估計</b>，
+          不同機構、不同模型（例如 NY Fed 的 HLW 模型）算出來的結果常常有落差，也會隨景氣循環慢慢變動，
+          這正是總體經濟學界一直在爭論的題目。所以這裡刻意讓你自己拖滑桿調整，而不是幫你決定一個「正確答案」。</p>
+        <p><b>產出缺口</b>：實際經濟活動跟「潛在」水準的差距，這裡用最簡化的 Okun's law（奧肯法則）近似，
+          拿失業率跟自然失業率（CBO 估計值）的差距乘以 2 來換算，只是一個粗略代理，不是精確的產出缺口衡量。</p>
+
+        <h3>怎麼解讀算出來的結果</h3>
+        <p>
+          這個工具給的是「模型建議值」，不是「正確答案」。如果目前 Fed Funds Rate 高於模型建議值，可能代表當前政策
+          相對偏緊；低於的話可能偏鬆。但差距本身<b>不代表 Fed「做錯了」</b>——實際決策還會考慮金融穩定、前瞻指引的
+          溝通效果、國際情勢等這個簡化公式完全沒涵蓋的因素。
+        </p>
+        <p>
+          比起死盯著算出來的單一數字，更有用的做法是<b>拖動 r* 滑桿，看看在不同的中性利率假設下，模型建議值會
+          落在什麼範圍</b>——如果不管怎麼調整 r*，結果都明顯偏離目前政策利率，這個訊號會比單一數字更值得注意；
+          如果只是在某個特定 r* 假設下才出現落差，代表你看到的落差本身高度依賴一個沒有共識的參數，解讀時要更謹慎。
+        </p>
+      </div>
+    </section>
+  `;
+}
+
+async function initRateEstimator(){
+  if(state.forceDemo || !state.proxyUrl){
+    estimatorState.nrou = 4.0;
+    estimatorState.nrouDate = 'DEMO';
+    estimatorState.nrouError = null;
+  }else{
+    try{
+      const obs = await fetchFred('NROU', 8);
+      if(obs.length===0) throw new Error('no data');
+      estimatorState.nrou = obs[obs.length-1].value;
+      estimatorState.nrouDate = obs[obs.length-1].date;
+      estimatorState.nrouError = null;
+    }catch(e){
+      estimatorState.nrou = null;
+      estimatorState.nrouError = e.message;
+    }
+  }
+  wireEstimatorInputs();
+  renderEstimator();
+}
+
+function wireEstimatorInputs(){
+  const rStarEl = document.getElementById('rStarSlider');
+  const piTargetEl = document.getElementById('piTargetSlider');
+  if(!rStarEl || !piTargetEl) return;
+  rStarEl.value = estimatorState.rStar;
+  piTargetEl.value = estimatorState.piTarget;
+  document.getElementById('rStarValue').textContent = estimatorState.rStar.toFixed(1)+'%';
+  document.getElementById('piTargetValue').textContent = estimatorState.piTarget.toFixed(1)+'%';
+
+  rStarEl.addEventListener('input', ()=>{
+    estimatorState.rStar = parseFloat(rStarEl.value);
+    document.getElementById('rStarValue').textContent = estimatorState.rStar.toFixed(1)+'%';
+    renderEstimator();
+  });
+  piTargetEl.addEventListener('input', ()=>{
+    estimatorState.piTarget = parseFloat(piTargetEl.value);
+    document.getElementById('piTargetValue').textContent = estimatorState.piTarget.toFixed(1)+'%';
+    renderEstimator();
+  });
+}
+
+function renderEstimator(){
+  const resultEl = document.getElementById('estimatorResult');
+  const detailEl = document.getElementById('estimatorDetail');
+  if(!resultEl) return;
+
+  const pceResult = state.lastResults['core_pce_yoy'];
+  const unrateResult = state.lastResults['unrate'];
+  const fedfundsResult = state.lastResults['fedfunds'];
+
+  if(!pceResult || !pceResult.ok || !unrateResult || !unrateResult.ok){
+    resultEl.innerHTML = '<div class="calendar-loading">需要先讓「經濟數據」分頁的核心PCE年增率與失業率載入完成(回經濟數據分頁看一下再回來)</div>';
+    detailEl.innerHTML = '';
+    return;
+  }
+  if(estimatorState.nrou===null){
+    resultEl.innerHTML = `<div class="calendar-loading">自然失業率(NROU)資料載入失敗${estimatorState.nrouError?'：'+estimatorState.nrouError:''}</div>`;
+    detailEl.innerHTML = '';
+    return;
+  }
+
+  const pi = pceResult.value;
+  const unrate = unrateResult.value;
+  const nrou = estimatorState.nrou;
+  const outputGap = 2 * (nrou - unrate); // Okun's law 近似
+  const rate = estimatorState.rStar + pi + 0.5*(pi - estimatorState.piTarget) + 0.5*outputGap;
+
+  resultEl.innerHTML = `
+    <div class="estimator-big">${fmtNum(rate,2)}%</div>
+    <div class="estimator-label">Taylor Rule 建議利率</div>
+  `;
+
+  const fedfundsText = (fedfundsResult && fedfundsResult.ok)
+    ? `${fmtNum(fedfundsResult.value,2)}%（目標區間上限,資料期間 ${fedfundsResult.asOf||'—'}）`
+    : '資料暫不可用';
+  const diffText = (fedfundsResult && fedfundsResult.ok)
+    ? `${rate>fedfundsResult.value?'高於':'低於'}目前 Fed Funds ${fmtNum(Math.abs(rate-fedfundsResult.value),2)} 個百分點`
+    : '—';
+
+  detailEl.innerHTML = `
+    <div class="estimator-row"><span>核心PCE年增率 (π)</span><span>${fmtNum(pi,2)}%</span></div>
+    <div class="estimator-row"><span>通膨目標</span><span>${fmtNum(estimatorState.piTarget,2)}%</span></div>
+    <div class="estimator-row"><span>失業率</span><span>${fmtNum(unrate,2)}%</span></div>
+    <div class="estimator-row"><span>自然失業率估計(NROU, CBO, ${estimatorState.nrouDate})</span><span>${fmtNum(nrou,2)}%</span></div>
+    <div class="estimator-row"><span>推算產出缺口</span><span>${fmtNum(outputGap,2)}%</span></div>
+    <div class="estimator-row"><span>中性實質利率 r*</span><span>${estimatorState.rStar.toFixed(1)}%</span></div>
+    <div class="estimator-row estimator-row-highlight"><span>目前 Fed Funds Rate</span><span>${fedfundsText}</span></div>
+    <div class="estimator-row estimator-row-highlight"><span>與目前利率差距</span><span>${diffText}</span></div>
+  `;
+}
+
 async function renderSkeleton(){
   const container = document.getElementById('sections');
   let html = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
@@ -1110,6 +1343,9 @@ async function renderSkeleton(){
   if(state.activeTab==='economic_calendar'){
     html += calendarSectionHTML();
   }
+  if(state.activeTab==='rate_estimator'){
+    html += rateEstimatorSectionHTML();
+  }
 
   container.innerHTML = html;
 
@@ -1118,6 +1354,9 @@ async function renderSkeleton(){
   }
   if(state.activeTab==='economic_calendar'){
     loadCalendar(); // 非同步載入,不擋住畫面渲染
+  }
+  if(state.activeTab==='rate_estimator'){
+    initRateEstimator();
   }
 }
 
@@ -1285,6 +1524,15 @@ async function computeDetailSeries(m){
   }
   if(m.kind==='rba'){
     return await fetchRba(); // CSV本身就是完整歷史,已由舊到新排序
+  }
+  if(m.kind==='series_diff'){
+    const rawLimit = historyRawLimit(m);
+    const [obsA, obsB] = await Promise.all([
+      fetchFred(m.seriesA, rawLimit),
+      fetchFred(m.seriesB, rawLimit),
+    ]);
+    const mapB = buildDateMap(obsB);
+    return obsA.filter(o=>mapB.has(o.date)).map(o=>({date:o.date, value:o.value-mapB.get(o.date).value}));
   }
   const rawLimit = historyRawLimit(m);
   const obs = await fetchFred(m.series, rawLimit); // 由舊到新
