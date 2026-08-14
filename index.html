@@ -761,7 +761,54 @@ const FOMC_MEMBERS = [
   {id:'waller',    name:'Christopher J. Waller', role:'Board of Governors'},
 ];
 
-function noteKey(id){ return `econdash_note_${id}`; }
+function noteKey(id){ return `econdash_note_${id}`; } // 本機備援模式用的key
+
+// notesMode: 'unknown'(尚未確認) / 'remote'(已連上雲端KV) / 'local'(退回本機儲存)
+state.notesMode = 'unknown';
+state.remoteNotes = {};
+
+async function ensureNotesLoaded(){
+  if(state.notesMode !== 'unknown') return;
+  if(state.forceDemo || !state.proxyUrl){
+    state.notesMode = 'local';
+    return;
+  }
+  try{
+    const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/notes`);
+    if(!res.ok) throw new Error('load failed '+res.status);
+    state.remoteNotes = await res.json();
+    state.notesMode = 'remote';
+  }catch(e){
+    console.error('讀取雲端看法備註失敗,退回本機模式', e);
+    state.notesMode = 'local';
+  }
+}
+
+function getNoteText(id){
+  if(state.notesMode==='remote'){ return state.remoteNotes[id] || ''; }
+  return localStorage.getItem(noteKey(id)) || '';
+}
+
+async function setNoteText(id, text){
+  if(state.notesMode==='remote'){
+    try{
+      const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/notes`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id, note:text}),
+      });
+      if(!res.ok) throw new Error('save failed '+res.status);
+      const data = await res.json();
+      if(data && data.notes) state.remoteNotes = data.notes;
+      return {ok:true};
+    }catch(e){
+      return {ok:false, error:e.message};
+    }
+  }
+  if(text.trim()===''){ localStorage.removeItem(noteKey(id)); }
+  else{ localStorage.setItem(noteKey(id), text); }
+  return {ok:true};
+}
 
 function memberCardHTML(mem){
   return `
@@ -774,12 +821,16 @@ function memberCardHTML(mem){
 }
 
 function fomcSectionHTML(){
+  const syncNote = state.notesMode==='remote'
+    ? '看法已同步到雲端,任何裝置都看得到'
+    : '目前為本機模式(尚未連接 Proxy,或雲端儲存未設定),看法只存在這個瀏覽器';
   return `
     <section class="category">
       <div class="cat-head">
         <span class="cat-eyebrow">fomc 2026</span>
         <h2 class="cat-title">FOMC 有投票權委員</h2>
       </div>
+      <p style="font-size:11.5px;color:var(--text-dim);margin:-6px 0 12px;">${syncNote}</p>
       <div class="grid">${FOMC_MEMBERS.map(memberCardHTML).join('')}</div>
     </section>
   `;
@@ -788,7 +839,7 @@ function fomcSectionHTML(){
 function renderMemberNotePreview(id){
   const el = document.getElementById(`notepreview-${id}`);
   if(!el) return;
-  const saved = localStorage.getItem(noteKey(id));
+  const saved = getNoteText(id);
   el.innerHTML = '';
   const span = document.createElement('span');
   if(!saved){
@@ -815,7 +866,7 @@ function classifyMemberTone(text){
 function applyMemberTone(id){
   const el = document.getElementById(`member-${id}`);
   if(!el) return;
-  const saved = localStorage.getItem(noteKey(id)) || '';
+  const saved = getNoteText(id);
   const tone = classifyMemberTone(saved);
   el.classList.remove('tone-hawk','tone-dove');
   if(tone) el.classList.add('tone-'+tone);
@@ -836,7 +887,7 @@ function openMemberNote(id){
   currentNoteMemberId = id;
   document.getElementById('noteModalName').textContent = mem.name;
   document.getElementById('noteModalRole').textContent = mem.role;
-  document.getElementById('noteTextarea').value = localStorage.getItem(noteKey(id)) || '';
+  document.getElementById('noteTextarea').value = getNoteText(id);
   document.getElementById('noteModalBg').classList.add('open');
 }
 
@@ -847,7 +898,7 @@ function closeNoteModal(){
 
 /* ---------------- 渲染 ---------------- */
 
-function renderSkeleton(){
+async function renderSkeleton(){
   const container = document.getElementById('sections');
   let html = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
     const items = METRICS.filter(m=>m.category===cat.key);
@@ -864,6 +915,7 @@ function renderSkeleton(){
   }).join('');
 
   if(state.activeTab==='central_bank'){
+    await ensureNotesLoaded();
     html += fomcSectionHTML();
   }
 
@@ -913,7 +965,7 @@ function renderCard(m, result){
 /* ---------------- 主流程 ---------------- */
 
 async function loadAll(){
-  renderSkeleton();
+  await renderSkeleton();
   document.querySelectorAll('.card').forEach(c=>c.classList.add('is-loading'));
 
   const usingDemo = state.forceDemo || !state.proxyUrl;
@@ -932,13 +984,13 @@ async function loadAll(){
   document.getElementById('updatedAt').textContent = '更新於 ' + new Date().toLocaleString('zh-TW');
 }
 
-function switchTab(tab){
+async function switchTab(tab){
   if(state.activeTab===tab) return;
   state.activeTab = tab;
   document.querySelectorAll('#tabbar button').forEach(b=>{
     b.classList.toggle('active', b.dataset.tab===tab);
   });
-  renderSkeleton();
+  await renderSkeleton();
   document.querySelectorAll('.card').forEach(c=>c.classList.add('is-loading'));
   METRICS.forEach(m=>{
     if(state.lastResults[m.id]) renderCard(m, state.lastResults[m.id]);
@@ -1235,16 +1287,27 @@ document.getElementById('closeNoteModalBtn').onclick = closeNoteModal;
 document.getElementById('noteModalBg').onclick = (e)=>{
   if(e.target.id==='noteModalBg') closeNoteModal();
 };
-document.getElementById('saveNoteModalBtn').onclick = ()=>{
+document.getElementById('saveNoteModalBtn').onclick = async ()=>{
   if(!currentNoteMemberId) return;
+  const id = currentNoteMemberId;
   const val = document.getElementById('noteTextarea').value;
-  if(val.trim()===''){
-    localStorage.removeItem(noteKey(currentNoteMemberId));
-  }else{
-    localStorage.setItem(noteKey(currentNoteMemberId), val);
+  const btn = document.getElementById('saveNoteModalBtn');
+  const originalLabel = btn.textContent;
+  btn.textContent = '儲存中…';
+  btn.disabled = true;
+
+  const result = await setNoteText(id, val);
+
+  btn.textContent = originalLabel;
+  btn.disabled = false;
+
+  if(!result.ok){
+    alert('儲存失敗，看法暫時沒有同步到雲端：'+result.error+'\n請確認 Proxy 網址與 Worker 部署狀態，稍後再試一次。');
+    return;
   }
-  renderMemberNotePreview(currentNoteMemberId);
-  applyMemberTone(currentNoteMemberId);
+
+  renderMemberNotePreview(id);
+  applyMemberTone(id);
   closeNoteModal();
 };
 
