@@ -481,6 +481,7 @@
     <button data-tab="central_bank">央行專區</button>
     <button data-tab="economic_calendar">經濟日曆</button>
     <button data-tab="trade_journal">交易日誌</button>
+    <button data-tab="news_journal">新聞摘要</button>
   </div>
 </div>
 
@@ -608,6 +609,49 @@
     <div class="modal-actions">
       <button class="btn" id="closeTradeModalBtn">取消</button>
       <button class="btn primary" id="saveTradeModalBtn">儲存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="newsModalBg">
+  <div class="modal">
+    <h2 id="newsModalTitle">新增新聞</h2>
+    <label for="newsDate">日期</label>
+    <input type="date" id="newsDate">
+
+    <label for="newsSummary">重點摘要</label>
+    <input type="text" id="newsSummary" placeholder="一句話講重點,會顯示在列表上">
+
+    <label for="newsDetails">詳細新聞</label>
+    <textarea id="newsDetails" rows="5" placeholder="完整新聞內容、數據、引述…"></textarea>
+
+    <label for="newsOpinion">看法</label>
+    <textarea id="newsOpinion" rows="4" placeholder="你對這則新聞的解讀、交易含義…"></textarea>
+
+    <div class="modal-actions">
+      <button class="btn" id="closeNewsModalBtn">取消</button>
+      <button class="btn primary" id="saveNewsModalBtn">儲存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="newsDetailModalBg">
+  <div class="modal modal-wide">
+    <div class="detail-head">
+      <div>
+        <span class="cat-eyebrow" id="newsDetailDate"></span>
+        <h2 id="newsDetailSummary"></h2>
+      </div>
+      <button class="gear-btn" id="closeNewsDetailBtn" title="關閉">✕</button>
+    </div>
+    <h3 style="font-family:'Fraunces',serif;font-weight:500;font-size:15px;color:var(--paper);margin:16px 0 6px;">詳細新聞</h3>
+    <p id="newsDetailDetails" style="font-size:13.5px;line-height:1.75;color:var(--text);white-space:pre-wrap;margin:0;"></p>
+    <h3 style="font-family:'Fraunces',serif;font-weight:500;font-size:15px;color:var(--paper);margin:18px 0 6px;">看法</h3>
+    <p id="newsDetailOpinion" style="font-size:13.5px;line-height:1.75;color:var(--text);white-space:pre-wrap;margin:0;"></p>
+    <div class="modal-actions" style="margin-top:20px;">
+      <button class="btn" id="deleteNewsDetailBtn">刪除</button>
+      <button class="btn" id="editNewsDetailBtn">編輯</button>
+      <button class="btn primary" id="closeNewsDetailBtn2">關閉</button>
     </div>
   </div>
 </div>
@@ -1065,6 +1109,8 @@ state.notesMode = 'unknown';
 state.remoteNotes = {};
 state.tradesMode = 'unknown';
 state.trades = null;
+state.newsMode = 'unknown';
+state.newsItems = null;
 
 async function ensureNotesLoaded(){
   if(state.notesMode !== 'unknown') return;
@@ -2046,6 +2092,233 @@ document.getElementById('saveTradeModalBtn').onclick = async ()=>{
   closeTradeModal();
 };
 
+/* ---------------- 新聞摘要(雲端儲存,共用 NOTES_KV) ---------------- */
+
+function newsJournalSectionHTML(){
+  return `
+    <section class="category">
+      <div class="cat-head">
+        <span class="cat-eyebrow">news log</span>
+        <h2 class="cat-title">新聞摘要</h2>
+      </div>
+      <button class="btn primary" id="addNewsBtn" style="margin-bottom:10px;">+ 新增新聞</button>
+      <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 14px;" id="newsJournalSyncNote"></p>
+      <div id="newsListWrap"><div class="calendar-loading">載入新聞摘要中…</div></div>
+    </section>
+  `;
+}
+
+function newsStorageKey(){ return 'econdash_news'; } // 本機備援模式用的key
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str==null ? '' : String(str);
+  return div.innerHTML;
+}
+
+async function ensureNewsLoaded(){
+  if(state.newsMode !== 'unknown') return;
+  if(state.forceDemo || !state.proxyUrl){
+    state.newsMode = 'local';
+    const raw = localStorage.getItem(newsStorageKey());
+    state.newsItems = raw ? JSON.parse(raw) : [];
+    return;
+  }
+  try{
+    const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/news`);
+    if(!res.ok) throw new Error('load failed '+res.status);
+    state.newsItems = await res.json();
+    state.newsMode = 'remote';
+  }catch(e){
+    console.error('讀取雲端新聞摘要失敗,退回本機模式', e);
+    state.newsMode = 'local';
+    const raw = localStorage.getItem(newsStorageKey());
+    state.newsItems = raw ? JSON.parse(raw) : [];
+  }
+}
+
+async function saveNewsRecord(item){
+  if(state.newsMode==='remote'){
+    try{
+      const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/news`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(item),
+      });
+      if(!res.ok) throw new Error('save failed '+res.status);
+      const data = await res.json();
+      state.newsItems = data.items || state.newsItems;
+      return {ok:true};
+    }catch(e){
+      return {ok:false, error:e.message};
+    }
+  }
+  state.newsItems = state.newsItems || [];
+  if(item.id){
+    const idx = state.newsItems.findIndex(n=>n.id===item.id);
+    if(idx!==-1){ state.newsItems[idx] = {...state.newsItems[idx], ...item}; }
+    else{ state.newsItems.push(item); }
+  }else{
+    const newItem = {id: Date.now().toString(36)+Math.random().toString(36).slice(2,8), ...item};
+    state.newsItems.push(newItem);
+  }
+  localStorage.setItem(newsStorageKey(), JSON.stringify(state.newsItems));
+  return {ok:true};
+}
+
+async function deleteNews(id){
+  if(!confirm('確定要刪除這則新聞紀錄嗎?')) return;
+  if(state.newsMode==='remote'){
+    try{
+      const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/news?id=${encodeURIComponent(id)}`, {method:'DELETE'});
+      if(!res.ok) throw new Error('delete failed '+res.status);
+      const data = await res.json();
+      state.newsItems = data.items || (state.newsItems||[]).filter(n=>n.id!==id);
+    }catch(e){
+      alert('刪除失敗：'+e.message);
+      return;
+    }
+  }else{
+    state.newsItems = (state.newsItems||[]).filter(n=>n.id!==id);
+    localStorage.setItem(newsStorageKey(), JSON.stringify(state.newsItems));
+  }
+  renderNewsList(state.newsItems);
+  closeNewsDetailModal();
+}
+
+function newsRowHTML(n){
+  return `
+    <div class="trade-row" style="cursor:pointer;" onclick="openNewsDetail('${n.id}')" tabindex="0" role="button"
+         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openNewsDetail('${n.id}');}">
+      <div class="trade-date">${n.date||'—'}</div>
+      <div class="trade-info">
+        <div class="trade-title">${escapeHtml(n.summary || '(無摘要)')}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderNewsList(items){
+  const wrap = document.getElementById('newsListWrap');
+  if(!wrap) return;
+  if(!items || items.length===0){
+    wrap.innerHTML = '<div class="calendar-loading">還沒有新聞紀錄,點上面「+ 新增新聞」開始記錄</div>';
+    return;
+  }
+  const sorted = [...items].sort((a,b)=> (a.date||'')<(b.date||'')?1:((a.date||'')>(b.date||'')?-1:0));
+  wrap.innerHTML = `<div class="trade-list">${sorted.map(newsRowHTML).join('')}</div>`;
+}
+
+let currentEditNewsId = null;
+let currentDetailNewsId = null;
+
+function openAddNewsModal(){
+  currentEditNewsId = null;
+  document.getElementById('newsModalTitle').textContent = '新增新聞';
+  document.getElementById('newsDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('newsSummary').value = '';
+  document.getElementById('newsDetails').value = '';
+  document.getElementById('newsOpinion').value = '';
+  document.getElementById('newsModalBg').classList.add('open');
+}
+
+function openEditNewsModal(id){
+  const item = (state.newsItems||[]).find(n=>n.id===id);
+  if(!item) return;
+  currentEditNewsId = id;
+  document.getElementById('newsModalTitle').textContent = '編輯新聞';
+  document.getElementById('newsDate').value = item.date || '';
+  document.getElementById('newsSummary').value = item.summary || '';
+  document.getElementById('newsDetails').value = item.details || '';
+  document.getElementById('newsOpinion').value = item.opinion || '';
+  closeNewsDetailModal();
+  document.getElementById('newsModalBg').classList.add('open');
+}
+
+function closeNewsModal(){
+  document.getElementById('newsModalBg').classList.remove('open');
+  currentEditNewsId = null;
+}
+
+function openNewsDetail(id){
+  const item = (state.newsItems||[]).find(n=>n.id===id);
+  if(!item) return;
+  currentDetailNewsId = id;
+  document.getElementById('newsDetailDate').textContent = item.date || '';
+  document.getElementById('newsDetailSummary').textContent = item.summary || '(無摘要)';
+  document.getElementById('newsDetailDetails').textContent = item.details || '(無內容)';
+  document.getElementById('newsDetailOpinion').textContent = item.opinion || '(無看法)';
+  document.getElementById('newsDetailModalBg').classList.add('open');
+}
+
+function closeNewsDetailModal(){
+  document.getElementById('newsDetailModalBg').classList.remove('open');
+  currentDetailNewsId = null;
+}
+
+async function initNewsJournal(){
+  const addBtn = document.getElementById('addNewsBtn');
+  if(addBtn) addBtn.onclick = openAddNewsModal;
+
+  await ensureNewsLoaded();
+  renderNewsList(state.newsItems || []);
+
+  const syncEl = document.getElementById('newsJournalSyncNote');
+  if(syncEl){
+    syncEl.textContent = state.newsMode==='remote'
+      ? '新聞摘要已同步到雲端,任何裝置都看得到'
+      : '目前為本機模式(尚未連接 Proxy,或雲端儲存未設定),紀錄只存在這個瀏覽器';
+  }
+}
+
+document.getElementById('closeNewsModalBtn').onclick = closeNewsModal;
+document.getElementById('newsModalBg').onclick = (e)=>{
+  if(e.target.id==='newsModalBg') closeNewsModal();
+};
+
+document.getElementById('saveNewsModalBtn').onclick = async ()=>{
+  const date = document.getElementById('newsDate').value;
+  const summary = document.getElementById('newsSummary').value.trim();
+  const details = document.getElementById('newsDetails').value;
+  const opinion = document.getElementById('newsOpinion').value;
+
+  if(!date){ alert('請選擇日期'); return; }
+  if(!summary){ alert('請輸入重點摘要'); return; }
+
+  let item = { date, summary, details, opinion };
+  if(currentEditNewsId){ item.id = currentEditNewsId; }
+
+  const btn = document.getElementById('saveNewsModalBtn');
+  const original = btn.textContent;
+  btn.textContent = '儲存中…';
+  btn.disabled = true;
+
+  const result = await saveNewsRecord(item);
+
+  btn.textContent = original;
+  btn.disabled = false;
+
+  if(!result.ok){
+    alert('儲存失敗，新聞暫時沒有同步到雲端：'+result.error+'\n請確認 Proxy 網址與 Worker 部署狀態，稍後再試一次。');
+    return;
+  }
+
+  renderNewsList(state.newsItems);
+  closeNewsModal();
+};
+
+document.getElementById('closeNewsDetailBtn').onclick = closeNewsDetailModal;
+document.getElementById('closeNewsDetailBtn2').onclick = closeNewsDetailModal;
+document.getElementById('newsDetailModalBg').onclick = (e)=>{
+  if(e.target.id==='newsDetailModalBg') closeNewsDetailModal();
+};
+document.getElementById('editNewsDetailBtn').onclick = ()=>{
+  if(currentDetailNewsId) openEditNewsModal(currentDetailNewsId);
+};
+document.getElementById('deleteNewsDetailBtn').onclick = ()=>{
+  if(currentDetailNewsId) deleteNews(currentDetailNewsId);
+};
+
 async function renderSkeleton(){
   const container = document.getElementById('sections');
   let html = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
@@ -2079,6 +2352,9 @@ async function renderSkeleton(){
   if(state.activeTab==='trade_journal'){
     html += tradeJournalSectionHTML();
   }
+  if(state.activeTab==='news_journal'){
+    html += newsJournalSectionHTML();
+  }
 
   container.innerHTML = html;
 
@@ -2093,6 +2369,9 @@ async function renderSkeleton(){
   }
   if(state.activeTab==='trade_journal'){
     initTradeJournal();
+  }
+  if(state.activeTab==='news_journal'){
+    initNewsJournal();
   }
 }
 
@@ -2466,7 +2745,7 @@ document.getElementById('detailModalBg').onclick = (e)=>{
   if(e.target.id==='detailModalBg') closeDetail();
 };
 document.addEventListener('keydown', (e)=>{
-  if(e.key==='Escape'){ closeDetail(); closeModal(); closeNoteModal(); }
+  if(e.key==='Escape'){ closeDetail(); closeModal(); closeNoteModal(); closeNewsModal(); closeNewsDetailModal(); }
 });
 
 document.getElementById('closeNoteModalBtn').onclick = closeNoteModal;
