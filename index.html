@@ -382,6 +382,15 @@
     color:var(--brass);display:block;margin:0 0 8px;
   }
   .btn-sm{padding:5px 12px;font-size:12px;flex-shrink:0;}
+
+  .news-search-input{
+    width:100%;max-width:420px;background:var(--panel);border:1px solid var(--panel-border);color:var(--text);
+    padding:9px 12px;border-radius:2px;font-family:'Inter',sans-serif;font-size:13px;
+    margin-bottom:14px;
+  }
+  .news-search-input:focus{outline:none;border-color:var(--brass);}
+  .news-search-input::placeholder{color:var(--text-dim);}
+  mark.news-hit{background:rgba(201,166,107,0.35);color:var(--paper);border-radius:1px;padding:0 1px;}
   .modal textarea{
     width:100%;background:var(--ink);border:1px solid var(--panel-border);color:var(--text);
     padding:10px 12px;border-radius:var(--radius);font-family:'Inter',sans-serif;font-size:13px;
@@ -1111,6 +1120,7 @@ state.tradesMode = 'unknown';
 state.trades = null;
 state.newsMode = 'unknown';
 state.newsItems = null;
+state.newsSearchKeyword = '';
 
 async function ensureNotesLoaded(){
   if(state.notesMode !== 'unknown') return;
@@ -2103,6 +2113,7 @@ function newsJournalSectionHTML(){
       </div>
       <button class="btn primary" id="addNewsBtn" style="margin-bottom:10px;">+ 新增新聞</button>
       <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 14px;" id="newsJournalSyncNote"></p>
+      <input type="text" id="newsSearchInput" class="news-search-input" placeholder="搜尋摘要、詳細內容、看法…">
       <div id="newsListWrap"><div class="calendar-loading">載入新聞摘要中…</div></div>
     </section>
   `;
@@ -2182,31 +2193,62 @@ async function deleteNews(id){
     state.newsItems = (state.newsItems||[]).filter(n=>n.id!==id);
     localStorage.setItem(newsStorageKey(), JSON.stringify(state.newsItems));
   }
-  renderNewsList(state.newsItems);
+  renderNewsList(state.newsItems, state.newsSearchKeyword);
   closeNewsDetailModal();
 }
 
-function newsRowHTML(n){
+function newsMatchesKeyword(n, keyword){
+  const k = keyword.toLowerCase();
+  return (n.summary||'').toLowerCase().includes(k)
+    || (n.details||'').toLowerCase().includes(k)
+    || (n.opinion||'').toLowerCase().includes(k);
+}
+
+function highlightText(text, keyword){
+  const escaped = escapeHtml(text);
+  if(!keyword) return escaped;
+  const kwEscaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // 跳脫正規表示式特殊字元
+  const re = new RegExp(`(${kwEscaped})`, 'gi');
+  return escaped.replace(re, '<mark class="news-hit">$1</mark>');
+}
+
+function newsRowHTML(n, keyword){
+  const summaryText = n.summary || '(無摘要)';
+  const kw = (keyword||'').toLowerCase();
+  const matchedInSummary = kw && summaryText.toLowerCase().includes(kw);
+  const matchedElsewhere = kw && !matchedInSummary && (
+    (n.details||'').toLowerCase().includes(kw) || (n.opinion||'').toLowerCase().includes(kw)
+  );
   return `
     <div class="trade-row" style="cursor:pointer;" onclick="openNewsDetail('${n.id}')" tabindex="0" role="button"
          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openNewsDetail('${n.id}');}">
       <div class="trade-date">${n.date||'—'}</div>
       <div class="trade-info">
-        <div class="trade-title">${escapeHtml(n.summary || '(無摘要)')}</div>
+        <div class="trade-title">${highlightText(summaryText, keyword)}</div>
+        ${matchedElsewhere ? '<div class="trade-sub">符合關鍵字：詳細新聞或看法內容</div>' : ''}
       </div>
     </div>
   `;
 }
 
-function renderNewsList(items){
+function renderNewsList(items, keyword){
   const wrap = document.getElementById('newsListWrap');
   if(!wrap) return;
+  const kw = (keyword||'').trim();
+
   if(!items || items.length===0){
     wrap.innerHTML = '<div class="calendar-loading">還沒有新聞紀錄,點上面「+ 新增新聞」開始記錄</div>';
     return;
   }
-  const sorted = [...items].sort((a,b)=> (a.date||'')<(b.date||'')?1:((a.date||'')>(b.date||'')?-1:0));
-  wrap.innerHTML = `<div class="trade-list">${sorted.map(newsRowHTML).join('')}</div>`;
+
+  const filtered = kw ? items.filter(n=>newsMatchesKeyword(n, kw)) : items;
+  if(kw && filtered.length===0){
+    wrap.innerHTML = `<div class="calendar-loading">沒有符合「${escapeHtml(kw)}」的新聞</div>`;
+    return;
+  }
+
+  const sorted = [...filtered].sort((a,b)=> (a.date||'')<(b.date||'')?1:((a.date||'')>(b.date||'')?-1:0));
+  wrap.innerHTML = `<div class="trade-list">${sorted.map(n=>newsRowHTML(n, kw)).join('')}</div>`;
 }
 
 let currentEditNewsId = null;
@@ -2260,8 +2302,17 @@ async function initNewsJournal(){
   const addBtn = document.getElementById('addNewsBtn');
   if(addBtn) addBtn.onclick = openAddNewsModal;
 
+  const searchInput = document.getElementById('newsSearchInput');
+  if(searchInput){
+    searchInput.value = state.newsSearchKeyword || '';
+    searchInput.addEventListener('input', ()=>{
+      state.newsSearchKeyword = searchInput.value;
+      renderNewsList(state.newsItems || [], state.newsSearchKeyword);
+    });
+  }
+
   await ensureNewsLoaded();
-  renderNewsList(state.newsItems || []);
+  renderNewsList(state.newsItems || [], state.newsSearchKeyword);
 
   const syncEl = document.getElementById('newsJournalSyncNote');
   if(syncEl){
@@ -2303,7 +2354,7 @@ document.getElementById('saveNewsModalBtn').onclick = async ()=>{
     return;
   }
 
-  renderNewsList(state.newsItems);
+  renderNewsList(state.newsItems, state.newsSearchKeyword);
   closeNewsModal();
 };
 
