@@ -491,6 +491,8 @@
     <button data-tab="economic_calendar">經濟日曆</button>
     <button data-tab="trade_journal">交易日誌</button>
     <button data-tab="news_journal">新聞摘要</button>
+    <button data-tab="bank_reports">投行報告</button>
+    <button data-tab="glossary">小百科</button>
   </div>
 </div>
 
@@ -654,12 +656,83 @@
       <button class="gear-btn" id="closeNewsDetailBtn" title="關閉">✕</button>
     </div>
     <p id="newsDetailDetails" style="font-size:13.5px;line-height:1.75;color:var(--text);white-space:pre-wrap;margin:16px 0 0;"></p>
-    <h3 style="font-family:'Fraunces',serif;font-weight:500;font-size:15px;color:var(--paper);margin:18px 0 6px;">看法</h3>
+    <h3 id="newsDetailOpinionLabel" style="font-family:'Fraunces',serif;font-weight:500;font-size:15px;color:var(--paper);margin:18px 0 6px;">看法</h3>
     <p id="newsDetailOpinion" style="font-size:13.5px;line-height:1.75;color:var(--text);white-space:pre-wrap;margin:0;"></p>
     <div class="modal-actions" style="margin-top:20px;">
       <button class="btn" id="deleteNewsDetailBtn">刪除</button>
       <button class="btn" id="editNewsDetailBtn">編輯</button>
       <button class="btn primary" id="closeNewsDetailBtn2">關閉</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="bankReportModalBg">
+  <div class="modal">
+    <h2 id="bankReportModalTitle">新增投行報告</h2>
+    <label for="bankReportBank">投行</label>
+    <input type="text" id="bankReportBank" placeholder="例如 Goldman Sachs">
+
+    <label for="bankReportDate">報告日期</label>
+    <input type="date" id="bankReportDate">
+
+    <label for="bankReportSummary">報告摘要</label>
+    <textarea id="bankReportSummary" rows="6" placeholder="重點結論、目標價、關鍵論述…"></textarea>
+
+    <div class="modal-actions">
+      <button class="btn" id="closeBankReportModalBtn">取消</button>
+      <button class="btn primary" id="saveBankReportModalBtn">儲存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="bankReportDetailModalBg">
+  <div class="modal modal-wide">
+    <div class="detail-head">
+      <div>
+        <span class="cat-eyebrow" id="bankReportDetailMeta"></span>
+        <h2 id="bankReportDetailBank"></h2>
+      </div>
+      <button class="gear-btn" id="closeBankReportDetailBtn" title="關閉">✕</button>
+    </div>
+    <p id="bankReportDetailSummary" style="font-size:13.5px;line-height:1.75;color:var(--text);white-space:pre-wrap;margin:16px 0 0;"></p>
+    <div class="modal-actions" style="margin-top:20px;">
+      <button class="btn" id="deleteBankReportDetailBtn">刪除</button>
+      <button class="btn" id="editBankReportDetailBtn">編輯</button>
+      <button class="btn primary" id="closeBankReportDetailBtn2">關閉</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="glossaryModalBg">
+  <div class="modal">
+    <h2 id="glossaryModalTitle">新增詞條</h2>
+    <label for="glossaryTerm">專有名詞</label>
+    <input type="text" id="glossaryTerm" placeholder="例如 Term Premium">
+
+    <label for="glossaryExplanation">解釋</label>
+    <textarea id="glossaryExplanation" rows="6" placeholder="用自己的話寫下這個詞的意思…"></textarea>
+
+    <div class="modal-actions">
+      <button class="btn" id="closeGlossaryModalBtn">取消</button>
+      <button class="btn primary" id="saveGlossaryModalBtn">儲存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="glossaryDetailModalBg">
+  <div class="modal modal-wide">
+    <div class="detail-head">
+      <div>
+        <span class="cat-eyebrow">glossary</span>
+        <h2 id="glossaryDetailTerm"></h2>
+      </div>
+      <button class="gear-btn" id="closeGlossaryDetailBtn" title="關閉">✕</button>
+    </div>
+    <p id="glossaryDetailExplanation" style="font-size:13.5px;line-height:1.75;color:var(--text);white-space:pre-wrap;margin:16px 0 0;"></p>
+    <div class="modal-actions" style="margin-top:20px;">
+      <button class="btn" id="deleteGlossaryDetailBtn">刪除</button>
+      <button class="btn" id="editGlossaryDetailBtn">編輯</button>
+      <button class="btn primary" id="closeGlossaryDetailBtn2">關閉</button>
     </div>
   </div>
 </div>
@@ -1120,6 +1193,10 @@ state.trades = null;
 state.newsMode = 'unknown';
 state.newsItems = null;
 state.newsSearchKeyword = '';
+state.bankReportsMode = 'unknown';
+state.bankReports = null;
+state.glossaryMode = 'unknown';
+state.glossaryItems = null;
 
 async function ensureNotesLoaded(){
   if(state.notesMode !== 'unknown') return;
@@ -2288,7 +2365,14 @@ function openNewsDetail(id){
   document.getElementById('newsDetailDate').textContent = item.date || '';
   document.getElementById('newsDetailSummary').textContent = item.summary || '(無摘要)';
   document.getElementById('newsDetailDetails').textContent = item.details || '(無內容)';
-  document.getElementById('newsDetailOpinion').textContent = item.opinion || '(無看法)';
+
+  const opinionLabel = document.getElementById('newsDetailOpinionLabel');
+  const opinionEl = document.getElementById('newsDetailOpinion');
+  const hasOpinion = item.opinion && item.opinion.trim() !== '';
+  opinionLabel.style.display = hasOpinion ? 'block' : 'none';
+  opinionEl.style.display = hasOpinion ? 'block' : 'none';
+  opinionEl.textContent = hasOpinion ? item.opinion : '';
+
   document.getElementById('newsDetailModalBg').classList.add('open');
 }
 
@@ -2369,6 +2453,434 @@ document.getElementById('deleteNewsDetailBtn').onclick = ()=>{
   if(currentDetailNewsId) deleteNews(currentDetailNewsId);
 };
 
+/* ---------------- 投行報告(雲端儲存,共用 NOTES_KV) ---------------- */
+
+function bankReportsSectionHTML(){
+  return `
+    <section class="category">
+      <div class="cat-head">
+        <span class="cat-eyebrow">bank reports</span>
+        <h2 class="cat-title">投行報告</h2>
+      </div>
+      <button class="btn primary" id="addBankReportBtn" style="margin-bottom:10px;">+ 新增報告</button>
+      <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 14px;" id="bankReportSyncNote"></p>
+      <div id="bankReportListWrap"><div class="calendar-loading">載入投行報告中…</div></div>
+    </section>
+  `;
+}
+
+function bankReportsStorageKey(){ return 'econdash_bank_reports'; }
+
+async function ensureBankReportsLoaded(){
+  if(state.bankReportsMode !== 'unknown') return;
+  if(state.forceDemo || !state.proxyUrl){
+    state.bankReportsMode = 'local';
+    const raw = localStorage.getItem(bankReportsStorageKey());
+    state.bankReports = raw ? JSON.parse(raw) : [];
+    return;
+  }
+  try{
+    const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/bank-reports`);
+    if(!res.ok) throw new Error('load failed '+res.status);
+    state.bankReports = await res.json();
+    state.bankReportsMode = 'remote';
+  }catch(e){
+    console.error('讀取雲端投行報告失敗,退回本機模式', e);
+    state.bankReportsMode = 'local';
+    const raw = localStorage.getItem(bankReportsStorageKey());
+    state.bankReports = raw ? JSON.parse(raw) : [];
+  }
+}
+
+async function saveBankReportRecord(item){
+  if(state.bankReportsMode==='remote'){
+    try{
+      const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/bank-reports`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(item),
+      });
+      if(!res.ok) throw new Error('save failed '+res.status);
+      const data = await res.json();
+      state.bankReports = data.items || state.bankReports;
+      return {ok:true};
+    }catch(e){
+      return {ok:false, error:e.message};
+    }
+  }
+  state.bankReports = state.bankReports || [];
+  if(item.id){
+    const idx = state.bankReports.findIndex(n=>n.id===item.id);
+    if(idx!==-1){ state.bankReports[idx] = {...state.bankReports[idx], ...item}; }
+    else{ state.bankReports.push(item); }
+  }else{
+    const newItem = {id: Date.now().toString(36)+Math.random().toString(36).slice(2,8), ...item};
+    state.bankReports.push(newItem);
+  }
+  localStorage.setItem(bankReportsStorageKey(), JSON.stringify(state.bankReports));
+  return {ok:true};
+}
+
+async function deleteBankReport(id){
+  if(!confirm('確定要刪除這份投行報告紀錄嗎?')) return;
+  if(state.bankReportsMode==='remote'){
+    try{
+      const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/bank-reports?id=${encodeURIComponent(id)}`, {method:'DELETE'});
+      if(!res.ok) throw new Error('delete failed '+res.status);
+      const data = await res.json();
+      state.bankReports = data.items || (state.bankReports||[]).filter(n=>n.id!==id);
+    }catch(e){
+      alert('刪除失敗：'+e.message);
+      return;
+    }
+  }else{
+    state.bankReports = (state.bankReports||[]).filter(n=>n.id!==id);
+    localStorage.setItem(bankReportsStorageKey(), JSON.stringify(state.bankReports));
+  }
+  renderBankReportList(state.bankReports);
+  closeBankReportDetailModal();
+}
+
+function bankReportRowHTML(n){
+  const preview = (n.summary||'').slice(0,50) + ((n.summary||'').length>50 ? '…' : '');
+  return `
+    <div class="trade-row" style="cursor:pointer;" onclick="openBankReportDetail('${n.id}')" tabindex="0" role="button"
+         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openBankReportDetail('${n.id}');}">
+      <div class="trade-date">${n.date||'—'}</div>
+      <div class="trade-info">
+        <div class="trade-title">${escapeHtml(n.bank || '(未填投行)')}</div>
+        <div class="trade-sub">${escapeHtml(preview)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderBankReportList(items){
+  const wrap = document.getElementById('bankReportListWrap');
+  if(!wrap) return;
+  if(!items || items.length===0){
+    wrap.innerHTML = '<div class="calendar-loading">還沒有投行報告紀錄,點上面「+ 新增報告」開始記錄</div>';
+    return;
+  }
+  const sorted = [...items].sort((a,b)=> (a.date||'')<(b.date||'')?1:((a.date||'')>(b.date||'')?-1:0));
+  wrap.innerHTML = `<div class="trade-list">${sorted.map(bankReportRowHTML).join('')}</div>`;
+}
+
+let currentEditBankReportId = null;
+let currentDetailBankReportId = null;
+
+function openAddBankReportModal(){
+  currentEditBankReportId = null;
+  document.getElementById('bankReportModalTitle').textContent = '新增投行報告';
+  document.getElementById('bankReportBank').value = '';
+  document.getElementById('bankReportDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('bankReportSummary').value = '';
+  document.getElementById('bankReportModalBg').classList.add('open');
+}
+
+function openEditBankReportModal(id){
+  const item = (state.bankReports||[]).find(n=>n.id===id);
+  if(!item) return;
+  currentEditBankReportId = id;
+  document.getElementById('bankReportModalTitle').textContent = '編輯投行報告';
+  document.getElementById('bankReportBank').value = item.bank || '';
+  document.getElementById('bankReportDate').value = item.date || '';
+  document.getElementById('bankReportSummary').value = item.summary || '';
+  closeBankReportDetailModal();
+  document.getElementById('bankReportModalBg').classList.add('open');
+}
+
+function closeBankReportModal(){
+  document.getElementById('bankReportModalBg').classList.remove('open');
+  currentEditBankReportId = null;
+}
+
+function openBankReportDetail(id){
+  const item = (state.bankReports||[]).find(n=>n.id===id);
+  if(!item) return;
+  currentDetailBankReportId = id;
+  document.getElementById('bankReportDetailMeta').textContent = item.date || '';
+  document.getElementById('bankReportDetailBank').textContent = item.bank || '(未填投行)';
+  document.getElementById('bankReportDetailSummary').textContent = item.summary || '(無摘要)';
+  document.getElementById('bankReportDetailModalBg').classList.add('open');
+}
+
+function closeBankReportDetailModal(){
+  document.getElementById('bankReportDetailModalBg').classList.remove('open');
+  currentDetailBankReportId = null;
+}
+
+async function initBankReports(){
+  const addBtn = document.getElementById('addBankReportBtn');
+  if(addBtn) addBtn.onclick = openAddBankReportModal;
+
+  await ensureBankReportsLoaded();
+  renderBankReportList(state.bankReports || []);
+
+  const syncEl = document.getElementById('bankReportSyncNote');
+  if(syncEl){
+    syncEl.textContent = state.bankReportsMode==='remote'
+      ? '投行報告已同步到雲端,任何裝置都看得到'
+      : '目前為本機模式(尚未連接 Proxy,或雲端儲存未設定),紀錄只存在這個瀏覽器';
+  }
+}
+
+document.getElementById('closeBankReportModalBtn').onclick = closeBankReportModal;
+document.getElementById('bankReportModalBg').onclick = (e)=>{
+  if(e.target.id==='bankReportModalBg') closeBankReportModal();
+};
+
+document.getElementById('saveBankReportModalBtn').onclick = async ()=>{
+  const bank = document.getElementById('bankReportBank').value.trim();
+  const date = document.getElementById('bankReportDate').value;
+  const summary = document.getElementById('bankReportSummary').value;
+
+  if(!bank){ alert('請輸入投行名稱'); return; }
+  if(!date){ alert('請選擇報告日期'); return; }
+
+  let item = { bank, date, summary };
+  if(currentEditBankReportId){ item.id = currentEditBankReportId; }
+
+  const btn = document.getElementById('saveBankReportModalBtn');
+  const original = btn.textContent;
+  btn.textContent = '儲存中…';
+  btn.disabled = true;
+
+  const result = await saveBankReportRecord(item);
+
+  btn.textContent = original;
+  btn.disabled = false;
+
+  if(!result.ok){
+    alert('儲存失敗，報告暫時沒有同步到雲端：'+result.error+'\n請確認 Proxy 網址與 Worker 部署狀態，稍後再試一次。');
+    return;
+  }
+
+  renderBankReportList(state.bankReports);
+  closeBankReportModal();
+};
+
+document.getElementById('closeBankReportDetailBtn').onclick = closeBankReportDetailModal;
+document.getElementById('closeBankReportDetailBtn2').onclick = closeBankReportDetailModal;
+document.getElementById('bankReportDetailModalBg').onclick = (e)=>{
+  if(e.target.id==='bankReportDetailModalBg') closeBankReportDetailModal();
+};
+document.getElementById('editBankReportDetailBtn').onclick = ()=>{
+  if(currentDetailBankReportId) openEditBankReportModal(currentDetailBankReportId);
+};
+document.getElementById('deleteBankReportDetailBtn').onclick = ()=>{
+  if(currentDetailBankReportId) deleteBankReport(currentDetailBankReportId);
+};
+
+/* ---------------- 小百科(雲端儲存,共用 NOTES_KV) ---------------- */
+
+function glossarySectionHTML(){
+  return `
+    <section class="category">
+      <div class="cat-head">
+        <span class="cat-eyebrow">glossary</span>
+        <h2 class="cat-title">小百科</h2>
+      </div>
+      <button class="btn primary" id="addGlossaryBtn" style="margin-bottom:10px;">+ 新增詞條</button>
+      <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 14px;" id="glossarySyncNote"></p>
+      <div id="glossaryListWrap"><div class="calendar-loading">載入詞條中…</div></div>
+    </section>
+  `;
+}
+
+function glossaryStorageKey(){ return 'econdash_glossary'; }
+
+async function ensureGlossaryLoaded(){
+  if(state.glossaryMode !== 'unknown') return;
+  if(state.forceDemo || !state.proxyUrl){
+    state.glossaryMode = 'local';
+    const raw = localStorage.getItem(glossaryStorageKey());
+    state.glossaryItems = raw ? JSON.parse(raw) : [];
+    return;
+  }
+  try{
+    const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/glossary`);
+    if(!res.ok) throw new Error('load failed '+res.status);
+    state.glossaryItems = await res.json();
+    state.glossaryMode = 'remote';
+  }catch(e){
+    console.error('讀取雲端小百科失敗,退回本機模式', e);
+    state.glossaryMode = 'local';
+    const raw = localStorage.getItem(glossaryStorageKey());
+    state.glossaryItems = raw ? JSON.parse(raw) : [];
+  }
+}
+
+async function saveGlossaryRecord(item){
+  if(state.glossaryMode==='remote'){
+    try{
+      const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/glossary`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(item),
+      });
+      if(!res.ok) throw new Error('save failed '+res.status);
+      const data = await res.json();
+      state.glossaryItems = data.items || state.glossaryItems;
+      return {ok:true};
+    }catch(e){
+      return {ok:false, error:e.message};
+    }
+  }
+  state.glossaryItems = state.glossaryItems || [];
+  if(item.id){
+    const idx = state.glossaryItems.findIndex(n=>n.id===item.id);
+    if(idx!==-1){ state.glossaryItems[idx] = {...state.glossaryItems[idx], ...item}; }
+    else{ state.glossaryItems.push(item); }
+  }else{
+    const newItem = {id: Date.now().toString(36)+Math.random().toString(36).slice(2,8), ...item};
+    state.glossaryItems.push(newItem);
+  }
+  localStorage.setItem(glossaryStorageKey(), JSON.stringify(state.glossaryItems));
+  return {ok:true};
+}
+
+async function deleteGlossaryItem(id){
+  if(!confirm('確定要刪除這個詞條嗎?')) return;
+  if(state.glossaryMode==='remote'){
+    try{
+      const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/glossary?id=${encodeURIComponent(id)}`, {method:'DELETE'});
+      if(!res.ok) throw new Error('delete failed '+res.status);
+      const data = await res.json();
+      state.glossaryItems = data.items || (state.glossaryItems||[]).filter(n=>n.id!==id);
+    }catch(e){
+      alert('刪除失敗：'+e.message);
+      return;
+    }
+  }else{
+    state.glossaryItems = (state.glossaryItems||[]).filter(n=>n.id!==id);
+    localStorage.setItem(glossaryStorageKey(), JSON.stringify(state.glossaryItems));
+  }
+  renderGlossaryList(state.glossaryItems);
+  closeGlossaryDetailModal();
+}
+
+function glossaryRowHTML(n){
+  const preview = (n.explanation||'').slice(0,60) + ((n.explanation||'').length>60 ? '…' : '');
+  return `
+    <div class="trade-row" style="cursor:pointer;" onclick="openGlossaryDetail('${n.id}')" tabindex="0" role="button"
+         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openGlossaryDetail('${n.id}');}">
+      <div class="trade-info">
+        <div class="trade-title">${escapeHtml(n.term || '(未命名詞條)')}</div>
+        <div class="trade-sub">${escapeHtml(preview)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderGlossaryList(items){
+  const wrap = document.getElementById('glossaryListWrap');
+  if(!wrap) return;
+  if(!items || items.length===0){
+    wrap.innerHTML = '<div class="calendar-loading">還沒有詞條,點上面「+ 新增詞條」開始記錄</div>';
+    return;
+  }
+  const sorted = [...items].sort((a,b)=> (a.term||'').localeCompare(b.term||'', 'zh-Hant'));
+  wrap.innerHTML = `<div class="trade-list">${sorted.map(glossaryRowHTML).join('')}</div>`;
+}
+
+let currentEditGlossaryId = null;
+let currentDetailGlossaryId = null;
+
+function openAddGlossaryModal(){
+  currentEditGlossaryId = null;
+  document.getElementById('glossaryModalTitle').textContent = '新增詞條';
+  document.getElementById('glossaryTerm').value = '';
+  document.getElementById('glossaryExplanation').value = '';
+  document.getElementById('glossaryModalBg').classList.add('open');
+}
+
+function openEditGlossaryModal(id){
+  const item = (state.glossaryItems||[]).find(n=>n.id===id);
+  if(!item) return;
+  currentEditGlossaryId = id;
+  document.getElementById('glossaryModalTitle').textContent = '編輯詞條';
+  document.getElementById('glossaryTerm').value = item.term || '';
+  document.getElementById('glossaryExplanation').value = item.explanation || '';
+  closeGlossaryDetailModal();
+  document.getElementById('glossaryModalBg').classList.add('open');
+}
+
+function closeGlossaryModal(){
+  document.getElementById('glossaryModalBg').classList.remove('open');
+  currentEditGlossaryId = null;
+}
+
+function openGlossaryDetail(id){
+  const item = (state.glossaryItems||[]).find(n=>n.id===id);
+  if(!item) return;
+  currentDetailGlossaryId = id;
+  document.getElementById('glossaryDetailTerm').textContent = item.term || '(未命名詞條)';
+  document.getElementById('glossaryDetailExplanation').textContent = item.explanation || '(無解釋)';
+  document.getElementById('glossaryDetailModalBg').classList.add('open');
+}
+
+function closeGlossaryDetailModal(){
+  document.getElementById('glossaryDetailModalBg').classList.remove('open');
+  currentDetailGlossaryId = null;
+}
+
+async function initGlossary(){
+  const addBtn = document.getElementById('addGlossaryBtn');
+  if(addBtn) addBtn.onclick = openAddGlossaryModal;
+
+  await ensureGlossaryLoaded();
+  renderGlossaryList(state.glossaryItems || []);
+
+  const syncEl = document.getElementById('glossarySyncNote');
+  if(syncEl){
+    syncEl.textContent = state.glossaryMode==='remote'
+      ? '詞條已同步到雲端,任何裝置都看得到'
+      : '目前為本機模式(尚未連接 Proxy,或雲端儲存未設定),紀錄只存在這個瀏覽器';
+  }
+}
+
+document.getElementById('closeGlossaryModalBtn').onclick = closeGlossaryModal;
+document.getElementById('glossaryModalBg').onclick = (e)=>{
+  if(e.target.id==='glossaryModalBg') closeGlossaryModal();
+};
+
+document.getElementById('saveGlossaryModalBtn').onclick = async ()=>{
+  const term = document.getElementById('glossaryTerm').value.trim();
+  const explanation = document.getElementById('glossaryExplanation').value;
+
+  if(!term){ alert('請輸入專有名詞'); return; }
+
+  let item = { term, explanation };
+  if(currentEditGlossaryId){ item.id = currentEditGlossaryId; }
+
+  const btn = document.getElementById('saveGlossaryModalBtn');
+  const original = btn.textContent;
+  btn.textContent = '儲存中…';
+  btn.disabled = true;
+
+  const result = await saveGlossaryRecord(item);
+
+  btn.textContent = original;
+  btn.disabled = false;
+
+  if(!result.ok){
+    alert('儲存失敗，詞條暫時沒有同步到雲端：'+result.error+'\n請確認 Proxy 網址與 Worker 部署狀態，稍後再試一次。');
+    return;
+  }
+
+  renderGlossaryList(state.glossaryItems);
+  closeGlossaryModal();
+};
+
+document.getElementById('closeGlossaryDetailBtn').onclick = closeGlossaryDetailModal;
+document.getElementById('closeGlossaryDetailBtn2').onclick = closeGlossaryDetailModal;
+document.getElementById('glossaryDetailModalBg').onclick = (e)=>{
+  if(e.target.id==='glossaryDetailModalBg') closeGlossaryDetailModal();
+};
+document.getElementById('editGlossaryDetailBtn').onclick = ()=>{
+  if(currentDetailGlossaryId) openEditGlossaryModal(currentDetailGlossaryId);
+};
+document.getElementById('deleteGlossaryDetailBtn').onclick = ()=>{
+  if(currentDetailGlossaryId) deleteGlossaryItem(currentDetailGlossaryId);
+};
+
 async function renderSkeleton(){
   const container = document.getElementById('sections');
   let html = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
@@ -2405,6 +2917,12 @@ async function renderSkeleton(){
   if(state.activeTab==='news_journal'){
     html += newsJournalSectionHTML();
   }
+  if(state.activeTab==='bank_reports'){
+    html += bankReportsSectionHTML();
+  }
+  if(state.activeTab==='glossary'){
+    html += glossarySectionHTML();
+  }
 
   container.innerHTML = html;
 
@@ -2422,6 +2940,12 @@ async function renderSkeleton(){
   }
   if(state.activeTab==='news_journal'){
     initNewsJournal();
+  }
+  if(state.activeTab==='bank_reports'){
+    initBankReports();
+  }
+  if(state.activeTab==='glossary'){
+    initGlossary();
   }
 }
 
@@ -2795,7 +3319,12 @@ document.getElementById('detailModalBg').onclick = (e)=>{
   if(e.target.id==='detailModalBg') closeDetail();
 };
 document.addEventListener('keydown', (e)=>{
-  if(e.key==='Escape'){ closeDetail(); closeModal(); closeNoteModal(); closeNewsModal(); closeNewsDetailModal(); }
+  if(e.key==='Escape'){
+    closeDetail(); closeModal(); closeNoteModal();
+    closeNewsModal(); closeNewsDetailModal();
+    closeBankReportModal(); closeBankReportDetailModal();
+    closeGlossaryModal(); closeGlossaryDetailModal();
+  }
 });
 
 document.getElementById('closeNoteModalBtn').onclick = closeNoteModal;
