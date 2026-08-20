@@ -383,24 +383,30 @@
   }
   .btn-sm{padding:5px 12px;font-size:12px;flex-shrink:0;}
 
-  .forecast-input-table{width:100%;border-collapse:collapse;min-width:560px;margin-top:14px;}
+  .forecast-input-table{width:100%;border-collapse:collapse;min-width:520px;margin-top:10px;}
   .forecast-input-table th{
-    text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
-    color:var(--text-dim);padding:8px 10px;border-bottom:1px solid var(--panel-border);white-space:nowrap;
+    text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--text-dim);padding:4px 6px;border-bottom:1px solid var(--panel-border);white-space:nowrap;
   }
-  .forecast-input-table td{padding:6px 10px;border-bottom:1px solid var(--panel-border);vertical-align:middle;}
+  .forecast-input-table td{padding:2px 6px;border-bottom:1px solid var(--panel-border);vertical-align:middle;}
   .forecast-group-cell{
-    font-family:'Fraunces',serif;font-size:13px;color:var(--paper);background:rgba(201,166,107,0.05);
+    font-family:'Fraunces',serif;font-size:12px;color:var(--paper);background:rgba(201,166,107,0.05);
     text-align:center;vertical-align:middle;
   }
-  .forecast-item-cell{font-size:12.5px;color:var(--text);vertical-align:middle;white-space:nowrap;}
-  .forecast-metric-cell{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-dim);white-space:nowrap;}
+  .forecast-item-cell{font-size:11.5px;color:var(--text);vertical-align:middle;white-space:nowrap;}
+  .forecast-metric-cell{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim);white-space:nowrap;}
   .forecast-cell-input{
-    width:100%;min-width:64px;background:var(--ink);border:1px solid var(--panel-border);color:var(--text);
-    padding:6px 8px;border-radius:2px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;
+    width:100%;min-width:56px;background:var(--ink);border:1px solid var(--panel-border);color:var(--text);
+    padding:3px 6px;border-radius:2px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;line-height:1.4;
   }
   .forecast-cell-input:focus{outline:none;border-color:var(--brass);}
   .forecast-table-wrap{overflow-x:auto;}
+  .forecast-bank-name-input{
+    width:100%;min-width:60px;background:transparent;border:none;border-bottom:1px dashed var(--panel-border);
+    color:var(--text-dim);font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+    padding:2px 2px 4px;
+  }
+  .forecast-bank-name-input:focus{outline:none;border-bottom-color:var(--brass);color:var(--brass);}
 
   .news-search-input{
     width:100%;max-width:420px;background:var(--panel);border:1px solid var(--panel-border);color:var(--text);
@@ -758,20 +764,20 @@
 <div class="modal-bg" id="forecastModalBg">
   <div class="modal modal-wide">
     <h2 id="forecastModalTitle">新增數據預估</h2>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:160px;">
-        <label for="forecastMonth">數據月份</label>
-        <input type="month" id="forecastMonth">
-      </div>
-      <div style="flex:1;min-width:160px;">
-        <label for="forecastReleaseDate">公布日期</label>
-        <input type="date" id="forecastReleaseDate">
-      </div>
+    <div style="max-width:220px;">
+      <label for="forecastMonth">數據月份</label>
+      <input type="month" id="forecastMonth">
     </div>
     <div class="forecast-table-wrap">
       <table class="forecast-input-table">
         <thead>
-          <tr><th colspan="3">經濟數據</th><th>市場預估</th><th>投行1</th><th>投行2</th><th>投行3</th></tr>
+          <tr>
+            <th colspan="3">經濟數據</th>
+            <th>市場預估</th>
+            <th><input type="text" class="forecast-bank-name-input" id="bankNameInput1" data-bank="bank1" value="投行1"></th>
+            <th><input type="text" class="forecast-bank-name-input" id="bankNameInput2" data-bank="bank2" value="投行2"></th>
+            <th><input type="text" class="forecast-bank-name-input" id="bankNameInput3" data-bank="bank3" value="投行3"></th>
+          </tr>
         </thead>
         <tbody id="forecastInputTbody"></tbody>
       </table>
@@ -3098,7 +3104,6 @@ function forecastRowSummaryHTML(f){
   return `
     <div class="trade-row" style="cursor:pointer;" onclick="openEditForecastModal('${f.id}')" tabindex="0" role="button"
          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEditForecastModal('${f.id}');}">
-      <div class="trade-date">${f.releaseDate||'—'}</div>
       <div class="trade-info">
         <div class="trade-title">${escapeHtml(month)} 數據預估</div>
       </div>
@@ -3113,7 +3118,7 @@ function renderForecastList(items){
     wrap.innerHTML = '<div class="calendar-loading">還沒有數據預估紀錄,點上面「+ 新增預估」開始記錄</div>';
     return;
   }
-  const sorted = [...items].sort((a,b)=> (a.releaseDate||'')<(b.releaseDate||'')?1:((a.releaseDate||'')>(b.releaseDate||'')?-1:0));
+  const sorted = [...items].sort((a,b)=> (a.month||'')<(b.month||'')?1:((a.month||'')>(b.month||'')?-1:0));
   wrap.innerHTML = `<div class="trade-list">${sorted.map(forecastRowSummaryHTML).join('')}</div>`;
 }
 
@@ -3170,15 +3175,37 @@ function populateForecastValues(values){
   });
 }
 
+function collectBankNames(){
+  const names = {};
+  document.querySelectorAll('.forecast-bank-name-input').forEach(input=>{
+    names[input.dataset.bank] = input.value.trim() || input.dataset.bank;
+  });
+  return names;
+}
+
+function populateBankNames(names){
+  const defaults = {bank1:'投行1', bank2:'投行2', bank3:'投行3'};
+  const use = names || defaults;
+  document.querySelectorAll('.forecast-bank-name-input').forEach(input=>{
+    input.value = use[input.dataset.bank] || defaults[input.dataset.bank];
+  });
+}
+
+// 新增時預設沿用最近一筆紀錄用過的投行名稱,不用每次重打
+function getMostRecentBankNames(){
+  const sorted = [...(state.forecasts||[])].sort((a,b)=> (a.month||'')<(b.month||'')?1:-1);
+  return (sorted.length>0 && sorted[0].bankNames) ? sorted[0].bankNames : null;
+}
+
 let currentEditForecastId = null;
 
 function openAddForecastModal(){
   currentEditForecastId = null;
   document.getElementById('forecastModalTitle').textContent = '新增數據預估';
   document.getElementById('forecastMonth').value = new Date().toISOString().slice(0,7);
-  document.getElementById('forecastReleaseDate').value = '';
   document.getElementById('deleteForecastModalBtn').style.display = 'none';
   populateForecastValues(null);
+  populateBankNames(getMostRecentBankNames());
   document.getElementById('forecastModalBg').classList.add('open');
 }
 
@@ -3188,9 +3215,9 @@ function openEditForecastModal(id){
   currentEditForecastId = id;
   document.getElementById('forecastModalTitle').textContent = '編輯數據預估';
   document.getElementById('forecastMonth').value = item.month || '';
-  document.getElementById('forecastReleaseDate').value = item.releaseDate || '';
   document.getElementById('deleteForecastModalBtn').style.display = 'inline-block';
   populateForecastValues(item.values || {});
+  populateBankNames(item.bankNames);
   document.getElementById('forecastModalBg').classList.add('open');
 }
 
@@ -3229,13 +3256,12 @@ document.getElementById('deleteForecastModalBtn').onclick = ()=>{
 
 document.getElementById('saveForecastModalBtn').onclick = async ()=>{
   const month = document.getElementById('forecastMonth').value;
-  const releaseDate = document.getElementById('forecastReleaseDate').value;
 
   if(!month){ alert('請選擇數據月份'); return; }
-  if(!releaseDate){ alert('請選擇公布日期'); return; }
 
   const values = collectForecastValues();
-  let item = { month, releaseDate, values };
+  const bankNames = collectBankNames();
+  let item = { month, values, bankNames };
   if(currentEditForecastId){ item.id = currentEditForecastId; }
 
   const btn = document.getElementById('saveForecastModalBtn');
