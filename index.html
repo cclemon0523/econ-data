@@ -802,6 +802,11 @@ const METRICS = [
   {id:'brent', series:'DCOILBRENTEU', category:'commodities', label:'布蘭特原油', unit:'美元/桶', kind:'level', decimals:2, freq:'日', limit:30, source:'FRED', intradaySymbol:'BZ=F'},
 
   {id:'move', symbol:'^MOVE', category:'other_market', label:'MOVE Index(公債波動率)', unit:'點', kind:'yahoo', decimals:1, freq:'近即時', source:'Yahoo Finance'},
+
+  {id:'tga',    category:'other_market', label:'TGA 餘額(財政部每日資料)', unit:'百萬美元', kind:'tga_daily', decimals:0, freq:'日(政府工作日)', source:'U.S. Treasury', sourceLabel:'Fiscal Data DTS'},
+  {id:'walcl',  series:'WALCL', category:'other_market', label:'Fed 總資產', unit:'百萬美元', kind:'level', decimals:0, freq:'週(週四公布)', limit:20, source:'FRED'},
+  {id:'on_rrp', series:'RRPONTSYD', category:'other_market', label:'ON RRP 用量(隔夜逆回購)', unit:'十億美元', kind:'level', decimals:1, freq:'日', limit:30, source:'FRED'},
+  {id:'net_liquidity', category:'other_market', label:'淨流動性(Fed總資產−TGA−ON RRP)', unit:'十億美元', kind:'net_liquidity', decimals:1, freq:'週(以WALCL為基準)', source:'FRED + U.S. Treasury', sourceLabel:'WALCL − TGA − RRPONTSYD'},
 ];
 
 // 示範資料（尚未接上 Proxy 時顯示，數字為近似示意值，非即時)
@@ -846,6 +851,10 @@ const DEMO = {
   oil:{value:64.2, prevValue:63.1, series:[62.4,63.0,61.8,63.5,63.1,64.2]},
   brent:{value:67.8, prevValue:66.9, series:[65.9,66.6,65.2,67.0,66.9,67.8]},
   move:{value:92.5, prevValue:95.2, series:[102.3,98.1,96.4,94.0,95.2,92.5]},
+  tga:{value:847718, prevValue:874077, series:[912727,887612,832053,838186,874077,847718]},
+  walcl:{value:6650000, prevValue:6665000, series:[6720000,6700000,6685000,6670000,6665000,6650000]},
+  on_rrp:{value:158.4, prevValue:172.6, series:[210.5,195.2,180.1,165.8,172.6,158.4]},
+  net_liquidity:{value:4995.9, prevValue:4954.7, series:[4980.2,4970.5,4988.9,4960.1,4954.7,4995.9]},
 };
 
 // ⚙ 把你的 Cloudflare Worker 網址填在這裡(記得重新上傳這個檔案),
@@ -1029,6 +1038,62 @@ async function fetchRba(){
   });
 }
 
+/* --- 財政部每日TGA餘額:2022/4後 close_today_bal 官方留空,改用 open_today_bal --- */
+
+async function fetchTgaDaily(limit){
+  return fetchWithRetry(async ()=>{
+    const url = `${state.proxyUrl.replace(/\/$/,'')}/treasury-tga?limit=${limit}`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('Treasury proxy error '+res.status);
+    const json = await res.json();
+    const rows = json.data || [];
+    const out = rows.map(r=>{
+      const rawOpen = r.open_today_bal;
+      const rawClose = r.close_today_bal;
+      const raw = (rawOpen!==null && rawOpen!==undefined && rawOpen!=='') ? rawOpen : rawClose;
+      return {date: r.record_date, value: parseFloat(raw)};
+    }).filter(o=>o.date && !Number.isNaN(o.value));
+    out.sort((a,b)=> a.date<b.date?-1:(a.date>b.date?1:0));
+    if(out.length===0){
+      throw new Error('財政部資料回傳格式與預期不同(找不到 TGA 餘額欄位,需要人工核對)');
+    }
+    return out;
+  }, 3, 800);
+}
+
+// 在一個由舊到新排序的陣列裡,找出日期<=目標日期的最後一筆(找不到就回傳null)
+function findLatestOnOrBefore(sortedAscArray, targetDate){
+  let result = null;
+  for(const o of sortedAscArray){
+    if(o.date <= targetDate) result = o;
+    else break;
+  }
+  return result;
+}
+
+// 淨流動性 = Fed總資產(WALCL,百萬) − TGA(財政部,單位待驗證,暫視為百萬) − ON RRP(RRPONTSYD,十億)
+// 以 WALCL 每週三的資料為基準,分別對齊當週三或之前最近一筆的 TGA、ON RRP
+async function computeNetLiquiditySeries(){
+  const [walclObs, rrpObs, tgaObs] = await Promise.all([
+    fetchFred('WALCL', 110),       // 約2年+緩衝,滿足「至少一年」歷史走勢
+    fetchFred('RRPONTSYD', 800),
+    fetchTgaDaily(800),
+  ]);
+  const out = [];
+  walclObs.forEach(w=>{
+    const rrp = findLatestOnOrBefore(rrpObs, w.date);
+    const tga = findLatestOnOrBefore(tgaObs, w.date);
+    if(rrp && tga){
+      out.push({
+        date: w.date,
+        value: (w.value/1000) - (tga.value/1000) - rrp.value,
+        _walcl: w.value, _tga: tga.value, _rrp: rrp.value, // 保留原始值供除錯核對用
+      });
+    }
+  });
+  return out;
+}
+
 async function loadMetric(m){
   if(state.forceDemo || !state.proxyUrl){
     return {ok:true, demo:true, ...DEMO[m.id]};
@@ -1050,6 +1115,24 @@ async function loadMetric(m){
       const prevValue = series.length>1 ? series[series.length-2].value : null;
       const asOf = series[series.length-1].date;
       return {ok:true, demo:false, value, prevValue, series:series.slice(-24).map(o=>o.value), asOf};
+    }
+    if(m.kind==='tga_daily'){
+      const series = await fetchTgaDaily(30);
+      if(series.length===0) throw new Error('no data');
+      const value = series[series.length-1].value;
+      const prevValue = series.length>1 ? series[series.length-2].value : null;
+      const asOf = series[series.length-1].date;
+      return {ok:true, demo:false, value, prevValue, series:series.slice(-24).map(o=>o.value), asOf};
+    }
+    if(m.kind==='net_liquidity'){
+      const series = await computeNetLiquiditySeries();
+      if(series.length===0) throw new Error('no data');
+      const latest = series[series.length-1];
+      const prev = series.length>1 ? series[series.length-2] : null;
+      return {
+        ok:true, demo:false, value:latest.value, prevValue: prev?prev.value:null,
+        series: series.slice(-24).map(o=>o.value), asOf: latest.date,
+      };
     }
     if(m.kind==='series_diff'){
       const [obsA, obsB] = await Promise.all([
@@ -3116,6 +3199,12 @@ async function computeDetailSeries(m){
   }
   if(m.kind==='rba'){
     return await fetchRba(); // CSV本身就是完整歷史,已由舊到新排序
+  }
+  if(m.kind==='tga_daily'){
+    return await fetchTgaDaily(800); // 涵蓋約2年以上,滿足1/5/10年區間篩選
+  }
+  if(m.kind==='net_liquidity'){
+    return await computeNetLiquiditySeries();
   }
   if(m.kind==='series_diff'){
     const rawLimit = historyRawLimit(m);
