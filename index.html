@@ -383,6 +383,25 @@
   }
   .btn-sm{padding:5px 12px;font-size:12px;flex-shrink:0;}
 
+  .forecast-input-table{width:100%;border-collapse:collapse;min-width:560px;margin-top:14px;}
+  .forecast-input-table th{
+    text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--text-dim);padding:8px 10px;border-bottom:1px solid var(--panel-border);white-space:nowrap;
+  }
+  .forecast-input-table td{padding:6px 10px;border-bottom:1px solid var(--panel-border);vertical-align:middle;}
+  .forecast-group-cell{
+    font-family:'Fraunces',serif;font-size:13px;color:var(--paper);background:rgba(201,166,107,0.05);
+    text-align:center;vertical-align:middle;
+  }
+  .forecast-item-cell{font-size:12.5px;color:var(--text);vertical-align:middle;white-space:nowrap;}
+  .forecast-metric-cell{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--text-dim);white-space:nowrap;}
+  .forecast-cell-input{
+    width:100%;min-width:64px;background:var(--ink);border:1px solid var(--panel-border);color:var(--text);
+    padding:6px 8px;border-radius:2px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;
+  }
+  .forecast-cell-input:focus{outline:none;border-color:var(--brass);}
+  .forecast-table-wrap{overflow-x:auto;}
+
   .news-search-input{
     width:100%;max-width:420px;background:var(--panel);border:1px solid var(--panel-border);color:var(--text);
     padding:9px 12px;border-radius:2px;font-family:'Inter',sans-serif;font-size:13px;
@@ -732,6 +751,35 @@
       <button class="btn" id="deleteGlossaryDetailBtn">刪除</button>
       <button class="btn" id="editGlossaryDetailBtn">編輯</button>
       <button class="btn primary" id="closeGlossaryDetailBtn2">關閉</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="forecastModalBg">
+  <div class="modal modal-wide">
+    <h2 id="forecastModalTitle">新增數據預估</h2>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:160px;">
+        <label for="forecastMonth">數據月份</label>
+        <input type="month" id="forecastMonth">
+      </div>
+      <div style="flex:1;min-width:160px;">
+        <label for="forecastReleaseDate">公布日期</label>
+        <input type="date" id="forecastReleaseDate">
+      </div>
+    </div>
+    <div class="forecast-table-wrap">
+      <table class="forecast-input-table">
+        <thead>
+          <tr><th colspan="3">經濟數據</th><th>市場預估</th><th>投行1</th><th>投行2</th><th>投行3</th></tr>
+        </thead>
+        <tbody id="forecastInputTbody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="deleteForecastModalBtn" style="display:none;">刪除</button>
+      <button class="btn" id="closeForecastModalBtn">取消</button>
+      <button class="btn primary" id="saveForecastModalBtn">儲存</button>
     </div>
   </div>
 </div>
@@ -1249,6 +1297,9 @@ state.bankReportsMode = 'unknown';
 state.bankReports = null;
 state.glossaryMode = 'unknown';
 state.glossaryItems = null;
+state.dataSubtab = 'main';
+state.forecastsMode = 'unknown';
+state.forecasts = null;
 
 async function ensureNotesLoaded(){
   if(state.notesMode !== 'unknown') return;
@@ -2933,25 +2984,314 @@ document.getElementById('deleteGlossaryDetailBtn').onclick = ()=>{
   if(currentDetailGlossaryId) deleteGlossaryItem(currentDetailGlossaryId);
 };
 
+/* ---------------- 數據預估(雲端儲存,共用 NOTES_KV) ---------------- */
+
+const FORECAST_COLUMNS = [
+  {id:'market', label:'市場預估'},
+  {id:'bank1',  label:'投行1'},
+  {id:'bank2',  label:'投行2'},
+  {id:'bank3',  label:'投行3'},
+];
+
+const FORECAST_GROUPS = [
+  {label:'通膨', items:[
+    {label:'CPI',      rows:[{id:'cpi_yoy',      label:'YOY'},{id:'cpi_mom',      label:'MOM'}]},
+    {label:'Core CPI', rows:[{id:'core_cpi_yoy', label:'YOY'},{id:'core_cpi_mom', label:'MOM'}]},
+    {label:'PCE',      rows:[{id:'pce_yoy',      label:'YOY'},{id:'pce_mom',      label:'MOM'}]},
+    {label:'Core PCE', rows:[{id:'core_pce_yoy', label:'YOY'},{id:'core_pce_mom', label:'MOM'}]},
+  ]},
+  {label:'就業', items:[
+    {label:'', rows:[{id:'nonfarm', label:'Nonfarm'},{id:'unemployment', label:'Unemployment%'}]},
+  ]},
+  {label:'消費', items:[
+    {label:'', rows:[{id:'retail_sales', label:'Retail Sales'}]},
+  ]},
+];
+
+function forecastsSectionHTML(){
+  return `
+    <section class="category">
+      <div class="cat-head">
+        <span class="cat-eyebrow">data forecasts</span>
+        <h2 class="cat-title">數據預估</h2>
+      </div>
+      <p class="cat-description">彙整各家投行與市場對重要經濟數據的預估值,跟實際公布數字比對用。</p>
+      <button class="btn primary" id="addForecastBtn" style="margin-bottom:10px;">+ 新增預估</button>
+      <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 14px;" id="forecastSyncNote"></p>
+      <div id="forecastListWrap"><div class="calendar-loading">載入數據預估中…</div></div>
+    </section>
+  `;
+}
+
+function forecastsStorageKey(){ return 'econdash_forecasts'; }
+
+async function ensureForecastsLoaded(){
+  if(state.forecastsMode !== 'unknown') return;
+  if(state.forceDemo || !state.proxyUrl){
+    state.forecastsMode = 'local';
+    const raw = localStorage.getItem(forecastsStorageKey());
+    state.forecasts = raw ? JSON.parse(raw) : [];
+    return;
+  }
+  try{
+    const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/data-forecasts`);
+    if(!res.ok) throw new Error('load failed '+res.status);
+    state.forecasts = await res.json();
+    state.forecastsMode = 'remote';
+  }catch(e){
+    console.error('讀取雲端數據預估失敗,退回本機模式', e);
+    state.forecastsMode = 'local';
+    const raw = localStorage.getItem(forecastsStorageKey());
+    state.forecasts = raw ? JSON.parse(raw) : [];
+  }
+}
+
+async function saveForecastRecord(item){
+  if(state.forecastsMode==='remote'){
+    try{
+      const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/data-forecasts`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(item),
+      });
+      if(!res.ok) throw new Error('save failed '+res.status);
+      const data = await res.json();
+      state.forecasts = data.items || state.forecasts;
+      return {ok:true};
+    }catch(e){
+      return {ok:false, error:e.message};
+    }
+  }
+  state.forecasts = state.forecasts || [];
+  if(item.id){
+    const idx = state.forecasts.findIndex(n=>n.id===item.id);
+    if(idx!==-1){ state.forecasts[idx] = {...state.forecasts[idx], ...item}; }
+    else{ state.forecasts.push(item); }
+  }else{
+    const newItem = {id: Date.now().toString(36)+Math.random().toString(36).slice(2,8), ...item};
+    state.forecasts.push(newItem);
+  }
+  localStorage.setItem(forecastsStorageKey(), JSON.stringify(state.forecasts));
+  return {ok:true};
+}
+
+async function deleteForecast(id){
+  if(!confirm('確定要刪除這筆數據預估紀錄嗎?')) return;
+  if(state.forecastsMode==='remote'){
+    try{
+      const res = await fetch(`${state.proxyUrl.replace(/\/$/,'')}/data-forecasts?id=${encodeURIComponent(id)}`, {method:'DELETE'});
+      if(!res.ok) throw new Error('delete failed '+res.status);
+      const data = await res.json();
+      state.forecasts = data.items || (state.forecasts||[]).filter(n=>n.id!==id);
+    }catch(e){
+      alert('刪除失敗：'+e.message);
+      return;
+    }
+  }else{
+    state.forecasts = (state.forecasts||[]).filter(n=>n.id!==id);
+    localStorage.setItem(forecastsStorageKey(), JSON.stringify(state.forecasts));
+  }
+  renderForecastList(state.forecasts);
+  closeForecastModal();
+}
+
+function forecastRowSummaryHTML(f){
+  const month = f.month || '—';
+  return `
+    <div class="trade-row" style="cursor:pointer;" onclick="openEditForecastModal('${f.id}')" tabindex="0" role="button"
+         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEditForecastModal('${f.id}');}">
+      <div class="trade-date">${f.releaseDate||'—'}</div>
+      <div class="trade-info">
+        <div class="trade-title">${escapeHtml(month)} 數據預估</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderForecastList(items){
+  const wrap = document.getElementById('forecastListWrap');
+  if(!wrap) return;
+  if(!items || items.length===0){
+    wrap.innerHTML = '<div class="calendar-loading">還沒有數據預估紀錄,點上面「+ 新增預估」開始記錄</div>';
+    return;
+  }
+  const sorted = [...items].sort((a,b)=> (a.releaseDate||'')<(b.releaseDate||'')?1:((a.releaseDate||'')>(b.releaseDate||'')?-1:0));
+  wrap.innerHTML = `<div class="trade-list">${sorted.map(forecastRowSummaryHTML).join('')}</div>`;
+}
+
+function buildForecastInputRowsHTML(){
+  let html = '';
+  FORECAST_GROUPS.forEach(group=>{
+    const groupRowCount = group.items.reduce((sum,it)=>sum+it.rows.length,0);
+    let groupFirstRow = true;
+    group.items.forEach(item=>{
+      let itemFirstRow = true;
+      item.rows.forEach(row=>{
+        html += '<tr>';
+        if(groupFirstRow){
+          html += `<td rowspan="${groupRowCount}" class="forecast-group-cell">${group.label}</td>`;
+          groupFirstRow = false;
+        }
+        if(itemFirstRow){
+          html += `<td rowspan="${item.rows.length}" class="forecast-item-cell">${item.label}</td>`;
+          itemFirstRow = false;
+        }
+        html += `<td class="forecast-metric-cell">${row.label}</td>`;
+        FORECAST_COLUMNS.forEach(col=>{
+          html += `<td><input type="text" class="forecast-cell-input" data-row="${row.id}" data-col="${col.id}" inputmode="decimal"></td>`;
+        });
+        html += '</tr>';
+      });
+    });
+  });
+  return html;
+}
+
+function collectForecastValues(){
+  const values = {};
+  document.querySelectorAll('#forecastInputTbody .forecast-cell-input').forEach(input=>{
+    const rowId = input.dataset.row, colId = input.dataset.col;
+    const v = input.value.trim();
+    if(v===''){ return; }
+    if(!values[rowId]) values[rowId] = {};
+    values[rowId][colId] = v;
+  });
+  return values;
+}
+
+function populateForecastValues(values){
+  document.querySelectorAll('#forecastInputTbody .forecast-cell-input').forEach(input=>{
+    input.value = '';
+  });
+  if(!values) return;
+  Object.keys(values).forEach(rowId=>{
+    Object.keys(values[rowId]).forEach(colId=>{
+      const input = document.querySelector(`#forecastInputTbody .forecast-cell-input[data-row="${rowId}"][data-col="${colId}"]`);
+      if(input) input.value = values[rowId][colId];
+    });
+  });
+}
+
+let currentEditForecastId = null;
+
+function openAddForecastModal(){
+  currentEditForecastId = null;
+  document.getElementById('forecastModalTitle').textContent = '新增數據預估';
+  document.getElementById('forecastMonth').value = new Date().toISOString().slice(0,7);
+  document.getElementById('forecastReleaseDate').value = '';
+  document.getElementById('deleteForecastModalBtn').style.display = 'none';
+  populateForecastValues(null);
+  document.getElementById('forecastModalBg').classList.add('open');
+}
+
+function openEditForecastModal(id){
+  const item = (state.forecasts||[]).find(n=>n.id===id);
+  if(!item) return;
+  currentEditForecastId = id;
+  document.getElementById('forecastModalTitle').textContent = '編輯數據預估';
+  document.getElementById('forecastMonth').value = item.month || '';
+  document.getElementById('forecastReleaseDate').value = item.releaseDate || '';
+  document.getElementById('deleteForecastModalBtn').style.display = 'inline-block';
+  populateForecastValues(item.values || {});
+  document.getElementById('forecastModalBg').classList.add('open');
+}
+
+function closeForecastModal(){
+  document.getElementById('forecastModalBg').classList.remove('open');
+  currentEditForecastId = null;
+}
+
+async function initForecastsSubtab(){
+  const tbody = document.getElementById('forecastInputTbody');
+  if(tbody && tbody.children.length===0){
+    tbody.innerHTML = buildForecastInputRowsHTML();
+  }
+
+  const addBtn = document.getElementById('addForecastBtn');
+  if(addBtn) addBtn.onclick = openAddForecastModal;
+
+  await ensureForecastsLoaded();
+  renderForecastList(state.forecasts || []);
+
+  const syncEl = document.getElementById('forecastSyncNote');
+  if(syncEl){
+    syncEl.textContent = state.forecastsMode==='remote'
+      ? '數據預估已同步到雲端,任何裝置都看得到'
+      : '目前為本機模式(尚未連接 Proxy,或雲端儲存未設定),紀錄只存在這個瀏覽器';
+  }
+}
+
+document.getElementById('closeForecastModalBtn').onclick = closeForecastModal;
+document.getElementById('forecastModalBg').onclick = (e)=>{
+  if(e.target.id==='forecastModalBg') closeForecastModal();
+};
+document.getElementById('deleteForecastModalBtn').onclick = ()=>{
+  if(currentEditForecastId) deleteForecast(currentEditForecastId);
+};
+
+document.getElementById('saveForecastModalBtn').onclick = async ()=>{
+  const month = document.getElementById('forecastMonth').value;
+  const releaseDate = document.getElementById('forecastReleaseDate').value;
+
+  if(!month){ alert('請選擇數據月份'); return; }
+  if(!releaseDate){ alert('請選擇公布日期'); return; }
+
+  const values = collectForecastValues();
+  let item = { month, releaseDate, values };
+  if(currentEditForecastId){ item.id = currentEditForecastId; }
+
+  const btn = document.getElementById('saveForecastModalBtn');
+  const original = btn.textContent;
+  btn.textContent = '儲存中…';
+  btn.disabled = true;
+
+  const result = await saveForecastRecord(item);
+
+  btn.textContent = original;
+  btn.disabled = false;
+
+  if(!result.ok){
+    alert('儲存失敗，預估資料暫時沒有同步到雲端：'+result.error+'\n請確認 Proxy 網址與 Worker 部署狀態，稍後再試一次。');
+    return;
+  }
+
+  renderForecastList(state.forecasts);
+  closeForecastModal();
+};
+
 async function renderSkeleton(){
   const container = document.getElementById('sections');
-  let html = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
-    const items = METRICS.filter(m=>m.category===cat.key);
-    if(items.length===0) return '';
-    if(state.activeTab==='data'){
+  let html = '';
+
+  if(state.activeTab==='data'){
+    const mainTablesHtml = CATEGORIES.filter(cat=>cat.tab==='data').map(cat=>{
+      const items = METRICS.filter(m=>m.category===cat.key);
+      if(items.length===0) return '';
       return tableSectionHTML(cat, items);
-    }
-    return `
-      <section class="category">
-        <div class="cat-head">
-          <span class="cat-eyebrow">${cat.key}</span>
-          <h2 class="cat-title">${cat.label}</h2>
-        </div>
-        ${cat.description ? `<p class="cat-description">${cat.description}</p>` : ''}
-        <div class="grid">${items.map(cardHTML).join('')}</div>
-      </section>
+    }).join('');
+
+    html += `
+      <div class="subtab-bar" id="dataSubtabBar">
+        <button data-subtab="main" class="${state.dataSubtab==='main'?'active':''}">經濟數據</button>
+        <button data-subtab="forecast" class="${state.dataSubtab==='forecast'?'active':''}">數據預估</button>
+      </div>
+      <div id="dataMainView" style="display:${state.dataSubtab==='main'?'block':'none'};margin-top:16px;">${mainTablesHtml}</div>
+      <div id="dataForecastView" style="display:${state.dataSubtab==='forecast'?'block':'none'};margin-top:16px;">${forecastsSectionHTML()}</div>
     `;
-  }).join('');
+  }else{
+    html = CATEGORIES.filter(cat=>cat.tab===state.activeTab).map(cat=>{
+      const items = METRICS.filter(m=>m.category===cat.key);
+      if(items.length===0) return '';
+      return `
+        <section class="category">
+          <div class="cat-head">
+            <span class="cat-eyebrow">${cat.key}</span>
+            <h2 class="cat-title">${cat.label}</h2>
+          </div>
+          ${cat.description ? `<p class="cat-description">${cat.description}</p>` : ''}
+          <div class="grid">${items.map(cardHTML).join('')}</div>
+        </section>
+      `;
+    }).join('');
+  }
 
   if(state.activeTab==='central_bank'){
     await ensureNotesLoaded();
@@ -2978,6 +3318,19 @@ async function renderSkeleton(){
 
   container.innerHTML = html;
 
+  if(state.activeTab==='data'){
+    const bar = document.getElementById('dataSubtabBar');
+    if(bar){
+      bar.addEventListener('click', (e)=>{
+        const btn = e.target.closest('button[data-subtab]');
+        if(!btn) return;
+        switchDataSubtab(btn.dataset.subtab);
+      });
+    }
+    if(state.dataSubtab==='forecast'){
+      initForecastsSubtab();
+    }
+  }
   if(state.activeTab==='central_bank'){
     renderAllMemberNotePreviews();
   }
@@ -3081,6 +3434,18 @@ document.getElementById('tabbar').addEventListener('click', (e)=>{
   if(!btn) return;
   switchTab(btn.dataset.tab);
 });
+
+function switchDataSubtab(tab){
+  state.dataSubtab = tab;
+  document.querySelectorAll('#dataSubtabBar button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.subtab===tab);
+  });
+  const mainEl = document.getElementById('dataMainView');
+  const forecastEl = document.getElementById('dataForecastView');
+  if(mainEl) mainEl.style.display = tab==='main' ? 'block' : 'none';
+  if(forecastEl) forecastEl.style.display = tab==='forecast' ? 'block' : 'none';
+  if(tab==='forecast'){ initForecastsSubtab(); }
+}
 
 /* ---------------- 設定面板 ---------------- */
 
@@ -3379,6 +3744,7 @@ document.addEventListener('keydown', (e)=>{
     closeNewsModal(); closeNewsDetailModal();
     closeBankReportModal(); closeBankReportDetailModal();
     closeGlossaryModal(); closeGlossaryDetailModal();
+    closeForecastModal();
   }
 });
 
